@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Absensi Online - Multi-Role</title>
+    <!-- PWA: Manifest & Meta -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AbsensiPro">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="icon" href="icons/icon-192.png">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
@@ -149,10 +158,13 @@
                             <span id="badgeLight" class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-sm">
                                 <i class="fa-solid fa-sun mr-1"></i> Cahaya: -
                             </span>
+                            <span id="badgeLiveness" class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-sm">
+                                <i class="fa-solid fa-eye mr-1"></i> Liveness: -
+                            </span>
                         </div>
                     </div>
 
-                    <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI akan memindai wajah, oklusi (wajah tertutup), dan kondisi cahaya secara live sebelum absen bisa dikirim.</p>
+                    <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI akan memindai wajah, oklusi (wajah tertutup), kondisi cahaya, dan <i>liveness</i> (kedipan mata/gerakan wajah asli) secara live sebelum absen bisa dikirim.</p>
 
                     <div class="mt-4 flex flex-wrap gap-2">
                         <button onclick="startCamera()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
@@ -161,13 +173,16 @@
                         <button onclick="getGPSLocation()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
                             <i class="fa-solid fa-location-dot mr-1"></i> Ambil Lokasi
                         </button>
+                        <span id="geoBadge" class="text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-slate-200 text-slate-600 self-center">
+                            <i class="fa-solid fa-map-pin mr-1"></i> Lokasi belum diverifikasi
+                        </span>
                         
                         <!-- TOMBOL ABSEN MASUK & PULANG -->
                         <div class="ml-auto flex gap-2">
-                            <button onclick="submitAbsen('Masuk')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition">
+                            <button id="btnAbsenMasuk" onclick="submitAbsen('Masuk')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed">
                                 <i class="fa-solid fa-right-to-bracket mr-1"></i> Absen Masuk
                             </button>
-                            <button onclick="submitAbsen('Pulang')" class="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition">
+                            <button id="btnAbsenPulang" onclick="submitAbsen('Pulang')" class="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed">
                                 <i class="fa-solid fa-right-from-bracket mr-1"></i> Absen Pulang
                             </button>
                         </div>
@@ -515,6 +530,50 @@
         let currentUser = JSON.parse(sessionStorage.getItem('absensi_session')) || null;
         let currentGPS = "Lokasi belum didapatkan";
 
+        // ================== KONFIGURASI GEOFENCING (RADIUS KANTOR) ==================
+        // GANTI lat/lng berikut dengan koordinat kantor Anda yang sebenarnya
+        // (buka Google Maps > klik kanan pada lokasi kantor > salin koordinat yang muncul).
+        const OFFICE_LOCATION = {
+            lat: -6.37280,   // contoh: area Margonda, Depok
+            lng: 106.83060,
+            radiusMeters: 300 // radius toleransi absen dalam meter
+        };
+        let geoState = { lat: null, lng: null, distance: null, withinRadius: false };
+
+        // Haversine formula: menghitung jarak antara 2 titik koordinat GPS di permukaan bumi (meter)
+        function haversineDistance(lat1, lng1, lat2, lng2) {
+            const R = 6371000; // radius rata-rata bumi (meter)
+            const toRad = (deg) => (deg * Math.PI) / 180;
+            const dLat = toRad(lat2 - lat1);
+            const dLng = toRad(lng2 - lng1);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Update badge & kunci/buka tombol absen berdasarkan status radius kantor
+        function updateGeoBadge() {
+            const geoBadge = document.getElementById('geoBadge');
+            const btnMasuk = document.getElementById('btnAbsenMasuk');
+            const btnPulang = document.getElementById('btnAbsenPulang');
+            if (!geoBadge) return;
+
+            if (geoState.distance === null) {
+                geoBadge.innerHTML = '<i class="fa-solid fa-map-pin mr-1"></i> Lokasi belum diverifikasi';
+                geoBadge.className = 'text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-slate-200 text-slate-600 self-center';
+            } else if (geoState.withinRadius) {
+                geoBadge.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Dalam Radius Kantor (±${Math.round(geoState.distance)}m)`;
+                geoBadge.className = 'text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 self-center';
+            } else {
+                geoBadge.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Diluar Radius Kantor (±${Math.round(geoState.distance)}m)`;
+                geoBadge.className = 'text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-red-100 text-red-700 border border-red-300 self-center';
+            }
+
+            // KUNCI TOMBOL ABSEN jika pengguna berada di luar radius yang diizinkan
+            const locked = !geoState.withinRadius;
+            [btnMasuk, btnPulang].forEach(btn => { if (btn) btn.disabled = locked; });
+        }
+
         // ================== KEAMANAN LOGIN (ANTI BRUTE-FORCE) ==================
         // Struktur per-username: { failCount, banUntil, banStage, permaBanned }
         let loginSecurity = JSON.parse(localStorage.getItem('absensi_security')) || {};
@@ -840,7 +899,61 @@
         let brightnessCanvas = document.createElement('canvas');
 
         // Status live hasil analisa AI, dipakai untuk gating tombol Absen Masuk/Pulang
-        let faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
+        let faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0, liveness: false };
+
+        // ================== LIVENESS DETECTION (ANTI FOTO CETAK) ==================
+        // Mendeteksi kedipan mata (Eye Aspect Ratio) & pergerakan wajah alami sebelum absen divalidasi
+        const EAR_BLINK_THRESHOLD = 0.23; // di bawah nilai ini dianggap mata tertutup
+        const LIVENESS_MOVEMENT_TARGET = 5; // jumlah frame pergerakan wajah wajar untuk lolos alternatif kedipan
+        let livenessState = { closedFrames: 0, blinkCount: 0, blinkDetected: false, lastCenter: null, movementScore: 0 };
+
+        function resetLivenessState() {
+            livenessState = { closedFrames: 0, blinkCount: 0, blinkDetected: false, lastCenter: null, movementScore: 0 };
+        }
+
+        function euclideanDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+        // Eye Aspect Ratio (EAR): rasio tinggi vs lebar mata dari 6 titik landmark mata
+        function calcEAR(eyePoints) {
+            const A = euclideanDist(eyePoints[1], eyePoints[5]);
+            const B = euclideanDist(eyePoints[2], eyePoints[4]);
+            const C = euclideanDist(eyePoints[0], eyePoints[3]);
+            if (C === 0) return 0.3;
+            return (A + B) / (2 * C);
+        }
+
+        // Menganalisis kedipan mata & pergerakan wajah antar-frame untuk memastikan objek adalah wajah hidup, bukan foto statis
+        function processLiveness(ear, box) {
+            // 1. DETEKSI KEDIPAN: mata tertutup (EAR rendah) lalu terbuka kembali dihitung sebagai 1 kedipan
+            if (ear < EAR_BLINK_THRESHOLD) {
+                livenessState.closedFrames++;
+            } else {
+                if (livenessState.closedFrames >= 1) {
+                    livenessState.blinkCount++;
+                    livenessState.blinkDetected = true;
+                }
+                livenessState.closedFrames = 0;
+            }
+
+            // 2. DETEKSI GERAKAN WAJAH ALAMI: pergeseran titik tengah wajah antar-frame (bukan foto diam)
+            if (box) {
+                const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+                if (livenessState.lastCenter) {
+                    const shift = euclideanDist(center, livenessState.lastCenter);
+                    if (shift > 1.5 && shift < 60) livenessState.movementScore++;
+                }
+                livenessState.lastCenter = center;
+            }
+
+            const isLive = livenessState.blinkDetected || livenessState.movementScore >= LIVENESS_MOVEMENT_TARGET;
+            faceState.liveness = isLive;
+
+            if (isLive) {
+                setAiBadge('badgeLiveness', '<i class="fa-solid fa-eye mr-1"></i> Liveness: Terverifikasi', 'bg-emerald-600/85 text-white');
+            } else {
+                setAiBadge('badgeLiveness', '<i class="fa-solid fa-eye-slash mr-1"></i> Liveness: Kedipkan Mata', 'bg-amber-500/85 text-white');
+            }
+        }
 
         async function loadFaceModels() {
             if (faceModelsLoaded || faceModelsLoading) return;
@@ -879,6 +992,7 @@
                     placeholder.classList.add('hidden');
                     overlay.classList.remove('hidden');
                     aiBar.classList.remove('hidden');
+                    resetLivenessState();
                     loadFaceModels();
                     if (faceCheckInterval) clearInterval(faceCheckInterval);
                     faceCheckInterval = setInterval(runFaceAnalysis, 700);
@@ -889,7 +1003,8 @@
         function stopCamera() {
             if(mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
             if (faceCheckInterval) { clearInterval(faceCheckInterval); faceCheckInterval = null; }
-            faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
+            faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0, liveness: false };
+            resetLivenessState();
             const aiBar = document.getElementById('aiStatusBar');
             if (aiBar) aiBar.classList.add('hidden');
         }
@@ -977,6 +1092,14 @@
                     faceState.occluded = false;
                     setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: Wajah Terlihat Jelas', 'bg-emerald-600/85 text-white');
                 }
+
+                // 4. LIVENESS DETECTION: analisis kedipan mata (EAR) & gerakan wajah alami dari titik landmark
+                if (detection.landmarks && typeof detection.landmarks.getLeftEye === 'function') {
+                    const leftEye = detection.landmarks.getLeftEye();
+                    const rightEye = detection.landmarks.getRightEye();
+                    const ear = (calcEAR(leftEye) + calcEAR(rightEye)) / 2;
+                    processLiveness(ear, box);
+                }
             } catch (err) {
                 console.error('Face analysis error:', err);
             }
@@ -993,13 +1116,22 @@
             addrEl.innerText = "Mendeteksi lokasi GPS...";
             navigator.geolocation.getCurrentPosition(
                 pos => {
-                    currentGPS = `Lat: ${pos.coords.latitude.toFixed(5)}, Lng: ${pos.coords.longitude.toFixed(5)} (Margonda, Depok)`;
-                    addrEl.innerText = currentGPS;
+                    const { latitude, longitude } = pos.coords;
+                    // GEOFENCING: hitung jarak pengguna terhadap koordinat kantor via Haversine formula
+                    const distance = haversineDistance(latitude, longitude, OFFICE_LOCATION.lat, OFFICE_LOCATION.lng);
+                    geoState = { lat: latitude, lng: longitude, distance, withinRadius: distance <= OFFICE_LOCATION.radiusMeters };
+
+                    currentGPS = `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)} (Margonda, Depok)`;
+                    addrEl.innerText = currentGPS + ` — Jarak ± ${Math.round(distance)}m dari titik kantor`;
+                    updateGeoBadge();
                 },
                 err => {
+                    geoState = { lat: null, lng: null, distance: null, withinRadius: false };
                     currentGPS = "Depok, Jawa Barat (Estimasi GPS)";
                     addrEl.innerText = currentGPS + " [Izin Lokasi Ditolak]";
-                }
+                    updateGeoBadge();
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
             );
         }
 
@@ -1022,6 +1154,17 @@
             }
             if (!faceState.wellLit) {
                 return showAlert('<b>Pencahayaan kurang mendukung!</b> Sesuaikan pencahayaan ruangan (jangan terlalu gelap/terlalu terang) lalu coba lagi.');
+            }
+            if (!faceState.liveness) {
+                return showAlert('<b>Liveness check belum terverifikasi!</b> Kedipkan mata Anda secara alami atau gerakkan sedikit wajah Anda di depan kamera. Langkah ini mencegah kecurangan absen menggunakan foto cetak/statis.');
+            }
+
+            // ================== GATING GEOFENCING (RADIUS KANTOR) ==================
+            if (geoState.distance === null) {
+                return showAlert('<b>Lokasi belum diverifikasi!</b> Klik tombol "Ambil Lokasi" terlebih dahulu untuk memvalidasi posisi GPS Anda.');
+            }
+            if (!geoState.withinRadius) {
+                return showAlert(`<b>Diluar Jangkauan Kantor!</b> Anda berada ±${Math.round(geoState.distance)} meter dari titik kantor. Absen hanya diizinkan dalam radius ${OFFICE_LOCATION.radiusMeters} meter.`);
             }
 
             const now = new Date();
@@ -1429,6 +1572,15 @@
             if(!val) return alert('Isi email/username');
             closeForgotModal();
             showAlert(`Sistem mengirim link reset password ke email (${val}).`, 'success');
+        }
+
+        // ================== PWA: REGISTRASI SERVICE WORKER ==================
+        // Memungkinkan aplikasi ini diinstal ke home screen & tetap dapat dibuka meski koneksi terbatas
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .catch(err => console.warn('Registrasi Service Worker gagal:', err));
+            });
         }
     </script>
 </body>
