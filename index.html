@@ -369,6 +369,41 @@
                     </div>
                 </div>
             </div>
+
+            <!-- PANEL PENGATURAN KANTOR & GEOFENCING (MULTI-TENANT) -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <h3 class="font-bold text-sm text-slate-700 mb-1"><i class="fa-solid fa-map-location-dot text-rose-600 mr-2"></i>Pengaturan Titik Kantor & Radius Geofencing</h3>
+                <p class="text-[11px] text-slate-500 mb-4">Atur koordinat kantor perusahaan Anda sendiri. Setiap perusahaan yang menjalankan sistem ini dapat mengisi titik lokasinya masing-masing (tidak menumpang ke koordinat siapa pun).</p>
+                <form onsubmit="saveOfficeConfig(event)" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Kantor</label>
+                        <input type="text" id="cfgNamaKantor" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="Contoh: Kantor Pusat Jakarta">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Latitude</label>
+                        <input type="number" step="any" id="cfgLat" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="-6.372800">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Longitude</label>
+                        <input type="number" step="any" id="cfgLng" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="106.830600">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Radius Maksimal (meter)</label>
+                        <input type="number" step="1" min="1" id="cfgRadius" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="300">
+                    </div>
+                    <div class="md:col-span-2 flex gap-2">
+                        <button type="button" onclick="useCurrentLocationForOffice()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg text-xs transition border border-slate-300">
+                            <i class="fa-solid fa-crosshairs mr-1"></i> Gunakan Lokasi Saat Ini
+                        </button>
+                    </div>
+                    <div class="md:col-span-2">
+                        <button type="submit" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2 rounded-lg text-xs transition">
+                            <i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Pengaturan Kantor
+                        </button>
+                    </div>
+                </form>
+                <p id="cfgStatusInfo" class="text-[11px] text-slate-500 mt-3"></p>
+            </div>
         </section>
 
         <!-- 5. PANEL VERIFIKASI SURAT DOKTER (HRD & ADMIN) -->
@@ -530,15 +565,83 @@
         let currentUser = JSON.parse(sessionStorage.getItem('absensi_session')) || null;
         let currentGPS = "Lokasi belum didapatkan";
 
-        // ================== KONFIGURASI GEOFENCING (RADIUS KANTOR) ==================
-        // GANTI lat/lng berikut dengan koordinat kantor Anda yang sebenarnya
-        // (buka Google Maps > klik kanan pada lokasi kantor > salin koordinat yang muncul).
-        const OFFICE_LOCATION = {
-            lat: -6.37280,   // contoh: area Margonda, Depok
-            lng: 106.83060,
-            radiusMeters: 300 // radius toleransi absen dalam meter
-        };
+        // ================== KONFIGURASI GEOFENCING (DINAMIS & MULTI-TENANT) ==================
+        // Titik koordinat kantor TIDAK LAGI di-hardcode. Setiap instance/perusahaan yang
+        // menjalankan sistem ini mengatur titik lokasinya sendiri lewat Panel Admin > Pengaturan
+        // Kantor & Geofencing, dan datanya disimpan lokal per-browser (localStorage), terpisah
+        // dari perusahaan/pengguna lain.
+        const OFFICE_CONFIG_KEY = 'absensi_office_config';
+        const DEFAULT_OFFICE_CONFIG = { namaKantor: "Kantor Pusat (Belum Diatur)", lat: -6.37280, lng: 106.83060, radiusMeters: 300 };
+
+        function loadOfficeConfig() {
+            const saved = JSON.parse(localStorage.getItem(OFFICE_CONFIG_KEY) || 'null');
+            if (saved && typeof saved.lat === 'number' && typeof saved.lng === 'number' && typeof saved.radiusMeters === 'number') {
+                return saved;
+            }
+            return { ...DEFAULT_OFFICE_CONFIG };
+        }
+
+        // OFFICE_LOCATION adalah sumber kebenaran aktif untuk validasi jarak karyawan.
+        // Bersifat "let" (bukan const) karena nilainya dapat diperbarui secara dinamis oleh Admin,
+        // dan langsung berlaku tanpa perlu mengubah kode.
+        let OFFICE_LOCATION = loadOfficeConfig();
         let geoState = { lat: null, lng: null, distance: null, withinRadius: false };
+
+        // Simpan konfigurasi kantor baru dari form Admin ke localStorage + terapkan langsung ke OFFICE_LOCATION
+        function saveOfficeConfig(event) {
+            if (event) event.preventDefault();
+            const nama = document.getElementById('cfgNamaKantor').value.trim();
+            const lat = parseFloat(document.getElementById('cfgLat').value);
+            const lng = parseFloat(document.getElementById('cfgLng').value);
+            const radius = parseInt(document.getElementById('cfgRadius').value, 10);
+
+            if (!nama || isNaN(lat) || isNaN(lng) || isNaN(radius) || radius <= 0 || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                showAlert('Input tidak valid. Pastikan Latitude (-90..90), Longitude (-180..180), dan Radius (>0) terisi benar.');
+                return;
+            }
+
+            OFFICE_LOCATION = { namaKantor: nama, lat, lng, radiusMeters: radius };
+            localStorage.setItem(OFFICE_CONFIG_KEY, JSON.stringify(OFFICE_LOCATION));
+
+            // Reset status verifikasi lokasi lama karena titik acuan kantor berubah
+            geoState = { lat: null, lng: null, distance: null, withinRadius: false };
+            updateGeoBadge();
+            renderOfficeSettingsForm();
+            showAlert(`Pengaturan kantor "<b>${nama}</b>" berhasil disimpan dan langsung aktif.`, 'success');
+        }
+
+        // Isi ulang form Pengaturan Kantor dengan konfigurasi aktif saat ini
+        function renderOfficeSettingsForm() {
+            const namaEl = document.getElementById('cfgNamaKantor');
+            if (!namaEl) return; // form belum ter-render (bukan di panel admin)
+            namaEl.value = OFFICE_LOCATION.namaKantor || '';
+            document.getElementById('cfgLat').value = OFFICE_LOCATION.lat;
+            document.getElementById('cfgLng').value = OFFICE_LOCATION.lng;
+            document.getElementById('cfgRadius').value = OFFICE_LOCATION.radiusMeters;
+            document.getElementById('cfgStatusInfo').innerHTML =
+                `<i class="fa-solid fa-circle-info mr-1"></i>Konfigurasi aktif saat ini: <b>${OFFICE_LOCATION.namaKantor}</b> (${OFFICE_LOCATION.lat.toFixed(6)}, ${OFFICE_LOCATION.lng.toFixed(6)}) — radius ${OFFICE_LOCATION.radiusMeters}m.`;
+        }
+
+        // Tombol "Gunakan Lokasi Saat Ini" di Panel Admin: ambil GPS perangkat admin saat setup awal
+        function useCurrentLocationForOffice() {
+            if (!navigator.geolocation) {
+                showAlert('Perangkat/browser ini tidak mendukung Geolocation API.');
+                return;
+            }
+            const statusEl = document.getElementById('cfgStatusInfo');
+            statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Mengambil lokasi perangkat Anda...';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    document.getElementById('cfgLat').value = pos.coords.latitude;
+                    document.getElementById('cfgLng').value = pos.coords.longitude;
+                    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Lokasi berhasil diambil (akurasi ±${Math.round(pos.coords.accuracy)}m). Cek koordinat lalu klik "Simpan Pengaturan Kantor".`;
+                },
+                (err) => {
+                    statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-600 mr-1"></i>Gagal mengambil lokasi: ${err.message}`;
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
 
         // Haversine formula: menghitung jarak antara 2 titik koordinat GPS di permukaan bumi (meter)
         function haversineDistance(lat1, lng1, lat2, lng2) {
@@ -570,8 +673,14 @@
             }
 
             // KUNCI TOMBOL ABSEN jika pengguna berada di luar radius yang diizinkan
+            // Tombol HIJAU + aktif jika dalam radius, MERAH + terkunci (disabled) jika di luar radius.
             const locked = !geoState.withinRadius;
-            [btnMasuk, btnPulang].forEach(btn => { if (btn) btn.disabled = locked; });
+            const activeMasukCls = "text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-700";
+            const lockedMasukCls = "text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed bg-red-400";
+            const activePulangCls = "text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed bg-rose-600 hover:bg-rose-700";
+            const lockedPulangCls = "text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed bg-red-400";
+            if (btnMasuk) { btnMasuk.disabled = locked; btnMasuk.className = locked ? lockedMasukCls : activeMasukCls; }
+            if (btnPulang) { btnPulang.disabled = locked; btnPulang.className = locked ? lockedPulangCls : activePulangCls; }
         }
 
         // ================== KEAMANAN LOGIN (ANTI BRUTE-FORCE) ==================
@@ -886,6 +995,7 @@
                 } else if (currentUser.role === 'admin') {
                     admSec.classList.remove('hidden');
                     renderAdminUsers();
+                    renderOfficeSettingsForm();
                 }
             }
         }
@@ -1121,13 +1231,13 @@
                     const distance = haversineDistance(latitude, longitude, OFFICE_LOCATION.lat, OFFICE_LOCATION.lng);
                     geoState = { lat: latitude, lng: longitude, distance, withinRadius: distance <= OFFICE_LOCATION.radiusMeters };
 
-                    currentGPS = `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)} (Margonda, Depok)`;
-                    addrEl.innerText = currentGPS + ` — Jarak ± ${Math.round(distance)}m dari titik kantor`;
+                    currentGPS = `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`;
+                    addrEl.innerText = currentGPS + ` — Jarak ± ${Math.round(distance)}m dari ${OFFICE_LOCATION.namaKantor || 'titik kantor'}`;
                     updateGeoBadge();
                 },
                 err => {
                     geoState = { lat: null, lng: null, distance: null, withinRadius: false };
-                    currentGPS = "Depok, Jawa Barat (Estimasi GPS)";
+                    currentGPS = "Lokasi tidak diketahui";
                     addrEl.innerText = currentGPS + " [Izin Lokasi Ditolak]";
                     updateGeoBadge();
                 },
