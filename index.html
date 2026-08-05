@@ -259,6 +259,7 @@
                 <div>
                     <h1 class="text-xl font-bold text-slate-800">Dashboard HRD - Realtime Absensi & Jam Kerja</h1>
                     <p class="text-xs text-slate-500">Pantau kehadiran, keterlambatan, jam masuk, jam pulang, dan durasi kerja. Rekap total per karyawan tersedia langsung di kolom tabel.</p>
+                    <p class="text-[10px] text-indigo-600 mt-1"><i class="fa-solid fa-globe mr-1"></i>Jam Masuk/Pulang otomatis ditampilkan sesuai zona waktu perangkat Anda saat ini — cocok untuk perusahaan dengan cabang di kota/pulau berbeda, karena data waktu tersimpan absolut (UTC) di balik layar.</p>
                 </div>
                 <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2 rounded-lg font-medium transition">
                     <i class="fa-solid fa-print mr-1"></i> Cetak Laporan
@@ -712,6 +713,38 @@
             });
         }
 
+        // ================== MANAJEMEN ZONA WAKTU (UTC STORAGE + LOCAL DISPLAY) ==================
+        // Semua data JAM absensi (waktuMasuk/waktuPulang) disimpan dalam format UTC ISO string
+        // (mis. "2026-08-06T01:15:30.000Z") — bukan jam lokal cabang tertentu. Ini penting agar
+        // perusahaan dengan cabang di kota/pulau/negara berbeda zona waktu tetap punya satu acuan
+        // waktu yang absolut dan tidak ambigu di database.
+        // Saat DITAMPILKAN ke layar, nilai UTC ini dikonversi otomatis ke zona waktu LOKAL
+        // perangkat masing-masing pengguna yang sedang melihat (browser bawaan yang menangani ini).
+        function getLocalDateStr(d) {
+            // Tanggal kalender "hari ini" versi LOKAL perangkat (bukan UTC), supaya rekap harian
+            // tetap akurat sesuai hari setempat karyawan yang absen, walau lintas zona waktu.
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+
+        function isUTCTimeString(val) {
+            return typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val);
+        }
+
+        // Konversi timestamp UTC (ISO string) ke jam lokal perangkat yang sedang membuka halaman.
+        // Kompatibel mundur: jika data lama (sebelum fitur ini) berupa teks jam biasa, tampilkan apa adanya.
+        function formatJamLocal(val) {
+            if (!val || val === '-') return '-';
+            if (!isUTCTimeString(val)) return val; // data lama, sudah berupa teks jam
+            try {
+                return new Date(val).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            } catch (e) {
+                return val;
+            }
+        }
+
         // MASA KERJA
         function hitungMasaKerja(tglMasukStr) {
             if (!tglMasukStr) return "-";
@@ -727,17 +760,30 @@
         }
 
         // HITUNG DURASI JAM KERJA
+        // Mendukung dua format: UTC ISO string (format baru, akurat lintas zona waktu)
+        // dan teks jam lokal lama "HH:MM:SS" (kompatibilitas data lama sebelum fitur ini ada).
         function hitungDurasiKerja(waktuMasuk, waktuPulang) {
             if(!waktuMasuk || !waktuPulang || waktuPulang === '-') return "Sedang Bekerja...";
-            
-            const [h1, m1] = waktuMasuk.split(':').map(Number);
-            const [h2, m2] = waktuPulang.split(':').map(Number);
-            
-            let totalMenit1 = (h1 * 60) + m1;
-            let totalMenit2 = (h2 * 60) + m2;
-            
-            let selisihMenit = totalMenit2 - totalMenit1;
-            if(selisihMenit < 0) return "-";
+
+            let selisihMenit;
+            if (isUTCTimeString(waktuMasuk) && isUTCTimeString(waktuPulang)) {
+                // Format baru: hitung selisih dari timestamp UTC absolut -> akurat walau lewat tengah malam/lintas zona
+                const d1 = new Date(waktuMasuk).getTime();
+                const d2 = new Date(waktuPulang).getTime();
+                if (isNaN(d1) || isNaN(d2)) return "-";
+                selisihMenit = Math.round((d2 - d1) / 60000);
+            } else {
+                // Format lama
+                try {
+                    const [h1, m1] = waktuMasuk.split(':').map(Number);
+                    const [h2, m2] = waktuPulang.split(':').map(Number);
+                    selisihMenit = ((h2 * 60) + m2) - ((h1 * 60) + m1);
+                } catch (e) {
+                    return "-";
+                }
+            }
+
+            if(isNaN(selisihMenit) || selisihMenit < 0) return "-";
 
             let jam = Math.floor(selisihMenit / 60);
             let menit = selisihMenit % 60;
@@ -1278,10 +1324,11 @@
             }
 
             const now = new Date();
-            const todayStr = now.toISOString().split('T')[0];
+            const todayStr = getLocalDateStr(now); // tanggal kalender lokal perangkat (bukan UTC) — akurat lintas zona waktu
             const jamNow = now.getHours();
             const menitNow = now.getMinutes();
-            const waktuStr = now.toLocaleTimeString('id-ID');
+            const waktuStr = now.toLocaleTimeString('id-ID'); // untuk teks notifikasi seketika ke karyawan ybs
+            const nowUTCISO = now.toISOString(); // DISIMPAN ke database/localStorage dalam UTC (absolut, tidak ambigu antar cabang)
             const shiftCfg = getShiftConfig(currentUser); // Jam masuk/pulang mengikuti shift karyawan (Pagi/Siang), total tetap 8 jam
 
             // Cari apakah user sudah pernah absen hari ini
@@ -1306,7 +1353,7 @@
                     tglMasuk: currentUser.tglMasuk,
                     shift: currentUser.shift || 'pagi',
                     status: status,
-                    waktuMasuk: waktuStr,
+                    waktuMasuk: nowUTCISO,
                     waktuPulang: '-',
                     tanggal: todayStr,
                     lokasi: currentGPS
@@ -1335,10 +1382,10 @@
                 }
 
                 // Update jam pulang record hari ini
-                existingRecord.waktuPulang = waktuStr;
+                existingRecord.waktuPulang = nowUTCISO;
                 saveLogsToStorage();
                 
-                const jamKerja = hitungDurasiKerja(existingRecord.waktuMasuk, waktuStr);
+                const jamKerja = hitungDurasiKerja(existingRecord.waktuMasuk, nowUTCISO);
                 showAlert(`Berhasil Absen Pulang pukul ${waktuStr}. Total Jam Kerja: <b>${jamKerja}</b>`, 'success');
             }
 
@@ -1379,9 +1426,9 @@
                 jabatan: currentUser.jabatan,
                 tglMasuk: currentUser.tglMasuk,
                 status: jenis,
-                waktuMasuk: now.toLocaleTimeString('id-ID'),
+                waktuMasuk: now.toISOString(),
                 waktuPulang: '-',
-                tanggal: now.toISOString().split('T')[0],
+                tanggal: getLocalDateStr(now),
                 lokasi: 'Keterangan: ' + alasan,
                 suratDokter: suratDokter,
                 statusVerifikasi: jenis === 'Sakit' ? 'Menunggu Verifikasi' : null,
@@ -1481,8 +1528,8 @@
                         <td class="p-3"><b>${log.tanggal}</b></td>
                         <td class="p-3"><b>${log.nama}</b><br><span class="text-[10px] text-slate-400">${log.userId}</span></td>
                         <td class="p-3">${log.jabatan}<br><span class="text-[10px] text-indigo-600 font-medium">Shift ${shiftLabel}</span> · <span class="text-[10px] text-blue-600 font-medium">${masaKerja}</span></td>
-                        <td class="p-3 font-semibold text-emerald-600"><i class="fa-solid fa-right-to-bracket mr-1"></i>${log.waktuMasuk}</td>
-                        <td class="p-3 font-semibold text-rose-600"><i class="fa-solid fa-right-from-bracket mr-1"></i>${log.waktuPulang}</td>
+                        <td class="p-3 font-semibold text-emerald-600"><i class="fa-solid fa-right-to-bracket mr-1"></i>${formatJamLocal(log.waktuMasuk)}</td>
+                        <td class="p-3 font-semibold text-rose-600"><i class="fa-solid fa-right-from-bracket mr-1"></i>${formatJamLocal(log.waktuPulang)}</td>
                         <td class="p-3 font-bold text-slate-700">${durasi}</td>
                         <td class="p-3">${statusBadge}</td>
                         <td class="p-3">${rekapHtml}</td>
