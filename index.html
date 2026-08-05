@@ -1,18 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistem Absensi Online - Multi-Role</title>
-    <!-- PWA: Manifest & Meta -->
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0f172a">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="AbsensiPro">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="icon" href="icons/icon-192.png">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
@@ -24,84 +15,265 @@
             .no-print { display: none !important; }
             .print-only { display: block !important; }
             body { background: white; color: black; }
+            main { margin-left: 0 !important; }
         }
         .print-only { display: none; }
+        .sidebar-link.active { background: rgba(255,255,255,0.12); color: #fff; border-left: 3px solid #3b82f6; }
+        .sidebar-link { border-left: 3px solid transparent; }
+        .auth-shape { background: radial-gradient(circle at 15% 15%, #fbbf24 0%, #fbbf24 12%, transparent 13%), linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #0ea5e9 75%, #22d3ee 100%); }
     </style>
 </head>
-<body class="bg-slate-100 font-sans text-slate-800 min-h-screen flex flex-col justify-between">
+<body class="bg-slate-100 font-sans text-slate-800 min-h-screen">
 
-    <!-- NAVBAR TOP -->
-    <nav class="bg-slate-900 text-white shadow-md no-print">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-            <div class="flex items-center space-x-3">
-                <i class="fa-solid fa-user-check text-blue-500 text-2xl"></i>
-                <span class="font-bold text-xl tracking-wide">AbsensiPro <span class="text-xs bg-blue-600 px-2 py-0.5 rounded text-slate-100">v1.3</span></span>
-            </div>
-            <div id="userInfoHeader" class="hidden flex items-center space-x-4">
-                <div class="text-right">
-                    <p id="navUserName" class="font-semibold text-sm">Nama User</p>
-                    <p id="navUserRole" class="text-xs text-blue-400 capitalize">Role</p>
+    <!-- ======================= AUTH LAYOUT (LOGIN / DAFTAR) ======================= -->
+    <div id="authWrapper" class="min-h-screen w-full flex">
+
+        <!-- 1. FORM LOGIN (SPLIT SCREEN) -->
+        <section id="loginSection" class="w-full flex">
+            <div class="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10">
+                <div class="w-full max-w-sm">
+                    <div class="flex items-center gap-2 mb-8">
+                        <i class="fa-solid fa-circle-check text-blue-600 text-2xl"></i>
+                        <span class="font-bold text-xl text-slate-800">AbsensiPro</span>
+                    </div>
+
+                    <div id="globalAlert" class="hidden mb-4 p-3 rounded-lg text-xs font-medium"></div>
+
+                    <h2 class="text-xl font-bold text-slate-900 mb-6">Masuk akun</h2>
+                    <form onsubmit="handleLogin(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                            <input type="text" id="loginUser" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="emailanda@gmail.com">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
+                            <input type="password" id="loginPass" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Masukkan password">
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <label class="flex items-center text-slate-600">
+                                <input type="checkbox" class="mr-1.5 rounded"> Ingat Saya
+                            </label>
+                            <button type="button" onclick="showForgotPasswordModal()" class="text-blue-600 hover:underline font-medium">Lupa password?</button>
+                        </div>
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg shadow transition text-sm">
+                            Masuk sekarang
+                        </button>
+                    </form>
+
+                    <div class="flex items-center gap-3 my-5">
+                        <div class="h-px bg-slate-200 flex-1"></div>
+                        <span class="text-[10px] text-slate-400 uppercase">atau</span>
+                        <div class="h-px bg-slate-200 flex-1"></div>
+                    </div>
+                    <button type="button" class="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                        <i class="fa-brands fa-google text-red-500"></i> Lanjutkan dengan Google
+                    </button>
+                    <p class="text-center text-xs text-slate-500 mt-4">Belum punya akun? <button type="button" onclick="showRegisterFlow()" class="text-blue-600 font-semibold hover:underline">Daftar disini</button></p>
+
+                    <div class="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
+                        <p class="font-bold text-slate-700 mb-1"><i class="fa-solid fa-key text-amber-500 mr-1"></i> Akun Demo (Password: 123456):</p>
+                        <p>• <b>Karyawan:</b> user / karyawan@test.com</p>
+                        <p>• <b>HRD:</b> hrd / hrd@test.com</p>
+                        <p>• <b>Admin:</b> admin / admin@test.com</p>
+                    </div>
                 </div>
-                <button onclick="logout()" class="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-2 rounded-lg transition">
+            </div>
+            <div class="hidden lg:block lg:w-1/2 auth-shape relative overflow-hidden">
+                <div class="absolute bottom-10 left-10 right-10 text-white/90">
+                    <p class="text-xs uppercase tracking-widest font-semibold">AbsensiPro</p>
+                    <p class="text-lg font-bold mt-1">Presensi wajah AI, GPS, & manajemen shift dalam satu sistem.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 1B. FLOW REGISTRASI (SPLIT SCREEN, MULTI-STEP) -->
+        <section id="registerSection" class="hidden w-full flex">
+            <div class="w-full lg:w-1/2 flex flex-col p-6 sm:p-10 overflow-y-auto">
+                <div class="flex items-center gap-2 mb-6">
+                    <i class="fa-solid fa-circle-check text-blue-600 text-2xl"></i>
+                    <span class="font-bold text-xl text-slate-800">AbsensiPro</span>
+                </div>
+
+                <!-- STEPPER -->
+                <div class="flex items-center justify-between max-w-md mb-8 text-xs font-semibold">
+                    <div class="flex flex-col items-center gap-1" id="stepDot1">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">1</div>
+                        <span class="text-slate-400">Pilih Bidang</span>
+                    </div>
+                    <div class="flex-1 h-0.5 bg-slate-200 mx-1"></div>
+                    <div class="flex flex-col items-center gap-1" id="stepDot2">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">2</div>
+                        <span class="text-slate-400">Pilih Paket</span>
+                    </div>
+                    <div class="flex-1 h-0.5 bg-slate-200 mx-1"></div>
+                    <div class="flex flex-col items-center gap-1" id="stepDot3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">3</div>
+                        <span class="text-slate-400">Daftar Akun</span>
+                    </div>
+                    <div class="flex-1 h-0.5 bg-slate-200 mx-1"></div>
+                    <div class="flex flex-col items-center gap-1" id="stepDot4">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">4</div>
+                        <span class="text-slate-400">Finish</span>
+                    </div>
+                </div>
+
+                <!-- STEP 1: PILIH BIDANG -->
+                <div id="regStep1" class="max-w-md w-full">
+                    <h3 class="font-bold text-slate-800 mb-4">Pilih Bidang Perusahaan</h3>
+                    <div class="grid grid-cols-3 gap-3" id="bidangGrid">
+                        <button type="button" onclick="selectBidang('Teknologi','fa-solid fa-laptop-code text-blue-500')" class="bidang-opt border rounded-lg p-4 flex flex-col items-center gap-2 hover:border-blue-500 hover:bg-blue-50 transition">
+                            <i class="fa-solid fa-laptop-code text-blue-500 text-xl"></i>
+                            <span class="text-xs font-medium">Teknologi</span>
+                        </button>
+                        <button type="button" onclick="selectBidang('Pemerintahan','fa-solid fa-landmark text-indigo-500')" class="bidang-opt border rounded-lg p-4 flex flex-col items-center gap-2 hover:border-blue-500 hover:bg-blue-50 transition">
+                            <i class="fa-solid fa-landmark text-indigo-500 text-xl"></i>
+                            <span class="text-xs font-medium">Pemerintahan</span>
+                        </button>
+                        <button type="button" onclick="selectBidang('F&B','fa-solid fa-utensils text-rose-500')" class="bidang-opt border rounded-lg p-4 flex flex-col items-center gap-2 hover:border-blue-500 hover:bg-blue-50 transition">
+                            <i class="fa-solid fa-utensils text-rose-500 text-xl"></i>
+                            <span class="text-xs font-medium">F&B</span>
+                        </button>
+                        <button type="button" onclick="selectBidang('Jasa','fa-solid fa-wrench text-slate-500')" class="bidang-opt border rounded-lg p-4 flex flex-col items-center gap-2 hover:border-blue-500 hover:bg-blue-50 transition">
+                            <i class="fa-solid fa-wrench text-slate-500 text-xl"></i>
+                            <span class="text-xs font-medium">Jasa</span>
+                        </button>
+                        <button type="button" onclick="selectBidang('Media','fa-solid fa-clapperboard text-purple-500')" class="bidang-opt border rounded-lg p-4 flex flex-col items-center gap-2 hover:border-blue-500 hover:bg-blue-50 transition">
+                            <i class="fa-solid fa-clapperboard text-purple-500 text-xl"></i>
+                            <span class="text-xs font-medium">Media</span>
+                        </button>
+                        <button type="button" onclick="selectBidang('Lainnya','fa-solid fa-pen text-amber-500')" class="bidang-opt border rounded-lg p-4 flex flex-col items-center gap-2 hover:border-blue-500 hover:bg-blue-50 transition">
+                            <i class="fa-solid fa-pen text-amber-500 text-xl"></i>
+                            <span class="text-xs font-medium">Lainnya</span>
+                        </button>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-6">Informasi bidang perusahaan membantu kami memberikan fitur yang lebih relevan untuk bisnis Anda.</p>
+                    <button type="button" onclick="goRegStep(2)" id="btnBidangNext" disabled class="mt-6 w-full bg-slate-300 text-white font-semibold py-2.5 rounded-lg text-sm transition cursor-not-allowed">Lanjutkan</button>
+                </div>
+
+                <!-- STEP 2: PILIH PAKET -->
+                <div id="regStep2" class="hidden max-w-md w-full">
+                    <div class="space-y-3">
+                        <label class="paket-opt border-2 border-blue-600 bg-blue-50 rounded-lg p-4 flex items-center gap-3 cursor-pointer">
+                            <input type="radio" name="paket" value="FREE 1" checked class="accent-blue-600">
+                            <div>
+                                <p class="font-bold text-slate-800 text-sm">Paket FREE 1</p>
+                                <p class="text-xs text-slate-500">Paket Gratis untuk 50 Karyawan</p>
+                            </div>
+                        </label>
+                        <label class="paket-opt border rounded-lg p-4 flex items-center gap-3 cursor-pointer hover:border-blue-400">
+                            <input type="radio" name="paket" value="PLATINUM" class="accent-blue-600">
+                            <div>
+                                <p class="font-bold text-slate-800 text-sm">Paket PLATINUM</p>
+                                <p class="text-xs text-slate-500">Paket Platinum untuk Perusahaan/Usaha menengah keatas</p>
+                            </div>
+                        </label>
+                    </div>
+                    <div class="border-t pt-4 mt-5 text-xs text-slate-600 space-y-1">
+                        <div class="flex justify-between"><span>Paket Terpilih</span><span id="paketNamaLabel" class="font-medium">FREE 1</span></div>
+                        <div class="flex justify-between"><span>Pajak</span><span>Rp 0</span></div>
+                        <div class="flex justify-between font-bold text-slate-800 text-sm pt-1"><span>Total</span><span>Rp 0</span></div>
+                    </div>
+                    <div class="flex gap-2 mt-6">
+                        <button type="button" onclick="goRegStep(1)" class="w-1/3 border border-slate-300 text-slate-600 font-semibold py-2.5 rounded-lg text-sm hover:bg-slate-50">Kembali</button>
+                        <button type="button" onclick="goRegStep(3)" class="w-2/3 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">Daftar Akun Sekarang</button>
+                    </div>
+                </div>
+
+                <!-- STEP 3: DAFTAR AKUN -->
+                <div id="regStep3" class="hidden max-w-md w-full">
+                    <div class="border rounded-lg">
+                        <div class="border-b p-4"><h3 class="font-bold text-slate-800">Daftar Akun</h3></div>
+                        <form onsubmit="handleRegisterSubmit(event)" class="p-4 space-y-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Perusahaan</label>
+                                <input type="text" id="regCompany" required class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan nama perusahaan">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                                <input type="email" id="regEmail" required class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="emailanda@gmail.com">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
+                                <input type="password" id="regPassword" required minlength="4" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan password">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Konfirmasi Password</label>
+                                <input type="password" id="regPasswordConfirm" required minlength="4" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ulangi password">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">Nomor Whatsapp</label>
+                                <input type="text" id="regWhatsapp" required class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan nomor Whatsapp">
+                            </div>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">Daftar</button>
+                        </form>
+                    </div>
+                    <button type="button" onclick="goRegStep(2)" class="mt-3 text-xs text-slate-500 hover:underline">&larr; Kembali pilih paket</button>
+                </div>
+
+                <!-- STEP 4: FINISH -->
+                <div id="regStep4" class="hidden max-w-md w-full text-center py-10">
+                    <i class="fa-solid fa-circle-check text-emerald-500 text-5xl mb-4"></i>
+                    <h3 class="font-bold text-lg text-slate-800">Pendaftaran Berhasil!</h3>
+                    <p class="text-sm text-slate-500 mt-2">Akun perusahaan Anda sudah dibuat. Silakan cek email untuk aktivasi, lalu masuk menggunakan akun Admin baru Anda.</p>
+                    <button type="button" onclick="backToLoginFromRegister()" class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">Ke Halaman Masuk</button>
+                </div>
+            </div>
+            <div class="hidden lg:block lg:w-1/2 auth-shape relative overflow-hidden">
+                <div class="absolute bottom-10 left-10 right-10 text-white/90">
+                    <p class="text-xs uppercase tracking-widest font-semibold">AbsensiPro</p>
+                    <p class="text-lg font-bold mt-1">Mulai kelola kehadiran timmu dalam hitungan menit.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ======================= APP LAYOUT (SIDEBAR + KONTEN, SETELAH LOGIN) ======================= -->
+    <div id="appWrapper" class="hidden min-h-screen w-full">
+
+        <!-- SIDEBAR KIRI -->
+        <aside class="no-print fixed inset-y-0 left-0 w-60 bg-slate-900 text-slate-300 flex flex-col z-40">
+            <div class="flex items-center gap-2 px-5 py-5 border-b border-white/10">
+                <i class="fa-solid fa-circle-check text-blue-500 text-xl"></i>
+                <span class="font-bold text-white text-base">AbsensiPro</span>
+                <span class="text-[10px] bg-blue-600 px-1.5 py-0.5 rounded text-white">v2.0</span>
+            </div>
+
+            <nav class="flex-1 overflow-y-auto py-3 text-sm">
+                <button id="btnTabAbsen" onclick="switchMainTab('absen')" class="sidebar-link w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                    <i class="fa-solid fa-camera w-4"></i> Presensi Saya
+                </button>
+                <button id="btnTabPanel" onclick="switchMainTab('panel')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                    <i id="lblTabPanelIcon" class="fa-solid fa-chart-line w-4"></i> <span id="lblTabPanelText">Panel Kontrol</span>
+                </button>
+                <button id="btnTabVerifikasi" onclick="switchMainTab('verifikasi')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                    <i class="fa-solid fa-file-medical w-4"></i> Verifikasi Surat
+                    <span id="badgeSuratPending" class="hidden ml-auto bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+
+                <p id="masterDataLabel" class="hidden px-5 pt-5 pb-1 text-[10px] font-bold uppercase text-slate-500 tracking-wider">Master Data</p>
+                <button id="btnTabShiftMaster" onclick="switchMainTab('shiftmaster')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                    <i class="fa-solid fa-business-time w-4"></i> Jam Kerja / Shift
+                </button>
+                <button id="btnTabUsers" onclick="switchMainTab('users')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                    <i class="fa-solid fa-users w-4"></i> Karyawan
+                </button>
+            </nav>
+
+            <div id="userInfoSidebar" class="border-t border-white/10 px-5 py-4">
+                <p id="navUserName" class="font-semibold text-sm text-white">Nama User</p>
+                <p id="navUserRole" class="text-xs text-blue-400 capitalize mb-3">Role</p>
+                <button onclick="logout()" class="w-full bg-red-600/90 hover:bg-red-700 text-white text-xs px-3 py-2 rounded-lg transition">
                     <i class="fa-solid fa-right-from-bracket mr-1"></i> Logout
                 </button>
             </div>
-        </div>
-    </nav>
+        </aside>
 
-    <!-- MAIN CONTAINER -->
-    <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full">
-
-        <!-- ALERT NOTIFIKASI SYSTEM -->
-        <div id="globalAlert" class="hidden mb-4 p-4 rounded-lg text-sm font-medium transition-all"></div>
-
-        <!-- TAB NAVIGASI KHUSUS HRD & ADMIN -->
-        <div id="roleNavTabs" class="hidden mb-6 flex border-b border-slate-300 no-print space-x-2">
-            <button id="btnTabAbsen" onclick="switchMainTab('absen')" class="py-2 px-4 text-xs font-bold border-b-2 border-blue-600 text-blue-600 bg-white rounded-t-lg">
-                <i class="fa-solid fa-camera mr-1"></i> Presensi Saya
-            </button>
-            <button id="btnTabPanel" onclick="switchMainTab('panel')" class="py-2 px-4 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 rounded-t-lg">
-                <i id="lblTabPanelIcon" class="fa-solid fa-chart-line mr-1"></i> <span id="lblTabPanelText">Panel Kontrol</span>
-            </button>
-            <button id="btnTabVerifikasi" onclick="switchMainTab('verifikasi')" class="py-2 px-4 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 rounded-t-lg">
-                <i class="fa-solid fa-file-medical mr-1"></i> Verifikasi Surat Dokter
-                <span id="badgeSuratPending" class="hidden ml-1 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span>
-            </button>
-        </div>
-
-        <!-- 1. FORM LOGIN -->
-        <section id="loginSection" class="max-w-md mx-auto bg-white p-8 rounded-xl shadow-lg border border-slate-200 mt-10">
-            <div class="text-center mb-6">
-                <h2 class="text-2xl font-bold text-slate-900">Masuk Akun</h2>
-                <p class="text-sm text-slate-500">Akses Sistem Absensi Karyawan</p>
+        <!-- KONTEN UTAMA -->
+        <main class="ml-60 min-h-screen flex flex-col">
+            <div class="px-6 pt-6">
+                <div id="globalAlertApp" class="hidden mb-4 p-4 rounded-lg text-sm font-medium transition-all no-print"></div>
             </div>
-            <form onsubmit="handleLogin(event)" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Username / Email</label>
-                    <input type="text" id="loginUser" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Masukkan username/email">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Password</label>
-                    <input type="password" id="loginPass" required class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="••••••••">
-                </div>
-                <div class="flex justify-between items-center text-xs">
-                    <label class="flex items-center text-slate-600">
-                        <input type="checkbox" class="mr-1 rounded"> Ingat saya
-                    </label>
-                    <button type="button" onclick="showForgotPasswordModal()" class="text-blue-600 hover:underline">Lupa Password?</button>
-                </div>
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg shadow transition text-sm">
-                    Masuk Sekarang
-                </button>
-            </form>
-
-            <div class="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
-                <p class="font-bold text-slate-700 mb-1"><i class="fa-solid fa-key text-amber-500 mr-1"></i> Akun Demo (Password: 123456):</p>
-                <p>• <b>Karyawan:</b> user / karyawan@test.com</p>
-                <p>• <b>HRD:</b> hrd / hrd@test.com</p>
-                <p>• <b>Admin:</b> admin / admin@test.com</p>
-            </div>
-        </section>
+            <div class="flex-grow px-6 pb-6 space-y-6">
 
         <!-- 2. PANEL KARYAWAN (DAPAT DIAKSES OLEH KARYAWAN, HRD, & ADMIN) -->
         <section id="karyawanSection" class="hidden space-y-6">
@@ -158,13 +330,10 @@
                             <span id="badgeLight" class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-sm">
                                 <i class="fa-solid fa-sun mr-1"></i> Cahaya: -
                             </span>
-                            <span id="badgeLiveness" class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-sm">
-                                <i class="fa-solid fa-eye mr-1"></i> Liveness: -
-                            </span>
                         </div>
                     </div>
 
-                    <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI akan memindai wajah, oklusi (wajah tertutup), kondisi cahaya, dan <i>liveness</i> (kedipan mata/gerakan wajah asli) secara live sebelum absen bisa dikirim.</p>
+                    <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI akan memindai wajah, oklusi (wajah tertutup), dan kondisi cahaya secara live sebelum absen bisa dikirim.</p>
 
                     <div class="mt-4 flex flex-wrap gap-2">
                         <button onclick="startCamera()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
@@ -173,16 +342,13 @@
                         <button onclick="getGPSLocation()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
                             <i class="fa-solid fa-location-dot mr-1"></i> Ambil Lokasi
                         </button>
-                        <span id="geoBadge" class="text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-slate-200 text-slate-600 self-center">
-                            <i class="fa-solid fa-map-pin mr-1"></i> Lokasi belum diverifikasi
-                        </span>
                         
                         <!-- TOMBOL ABSEN MASUK & PULANG -->
                         <div class="ml-auto flex gap-2">
-                            <button id="btnAbsenMasuk" onclick="submitAbsen('Masuk')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed">
+                            <button onclick="submitAbsen('Masuk')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition">
                                 <i class="fa-solid fa-right-to-bracket mr-1"></i> Absen Masuk
                             </button>
-                            <button id="btnAbsenPulang" onclick="submitAbsen('Pulang')" class="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed">
+                            <button onclick="submitAbsen('Pulang')" class="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition">
                                 <i class="fa-solid fa-right-from-bracket mr-1"></i> Absen Pulang
                             </button>
                         </div>
@@ -259,7 +425,6 @@
                 <div>
                     <h1 class="text-xl font-bold text-slate-800">Dashboard HRD - Realtime Absensi & Jam Kerja</h1>
                     <p class="text-xs text-slate-500">Pantau kehadiran, keterlambatan, jam masuk, jam pulang, dan durasi kerja. Rekap total per karyawan tersedia langsung di kolom tabel.</p>
-                    <p class="text-[10px] text-indigo-600 mt-1"><i class="fa-solid fa-globe mr-1"></i>Jam Masuk/Pulang otomatis ditampilkan sesuai zona waktu perangkat Anda saat ini — cocok untuk perusahaan dengan cabang di kota/pulau berbeda, karena data waktu tersimpan absolut (UTC) di balik layar.</p>
                 </div>
                 <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2 rounded-lg font-medium transition">
                     <i class="fa-solid fa-print mr-1"></i> Cetak Laporan
@@ -370,41 +535,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- PANEL PENGATURAN KANTOR & GEOFENCING (MULTI-TENANT) -->
-            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                <h3 class="font-bold text-sm text-slate-700 mb-1"><i class="fa-solid fa-map-location-dot text-rose-600 mr-2"></i>Pengaturan Titik Kantor & Radius Geofencing</h3>
-                <p class="text-[11px] text-slate-500 mb-4">Atur koordinat kantor perusahaan Anda sendiri. Setiap perusahaan yang menjalankan sistem ini dapat mengisi titik lokasinya masing-masing (tidak menumpang ke koordinat siapa pun).</p>
-                <form onsubmit="saveOfficeConfig(event)" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Kantor</label>
-                        <input type="text" id="cfgNamaKantor" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="Contoh: Kantor Pusat Jakarta">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Latitude</label>
-                        <input type="number" step="any" id="cfgLat" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="-6.372800">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Longitude</label>
-                        <input type="number" step="any" id="cfgLng" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="106.830600">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Radius Maksimal (meter)</label>
-                        <input type="number" step="1" min="1" id="cfgRadius" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="300">
-                    </div>
-                    <div class="md:col-span-2 flex gap-2">
-                        <button type="button" onclick="useCurrentLocationForOffice()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg text-xs transition border border-slate-300">
-                            <i class="fa-solid fa-crosshairs mr-1"></i> Gunakan Lokasi Saat Ini
-                        </button>
-                    </div>
-                    <div class="md:col-span-2">
-                        <button type="submit" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-2 rounded-lg text-xs transition">
-                            <i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Pengaturan Kantor
-                        </button>
-                    </div>
-                </form>
-                <p id="cfgStatusInfo" class="text-[11px] text-slate-500 mt-3"></p>
-            </div>
         </section>
 
         <!-- 5. PANEL VERIFIKASI SURAT DOKTER (HRD & ADMIN) -->
@@ -453,7 +583,43 @@
             </div>
         </section>
 
-    </main>
+        <!-- 6. MASTER DATA: JAM KERJA / SHIFT (ADMIN) -->
+        <section id="shiftMasterSection" class="hidden space-y-6">
+            <div class="bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2.5 rounded-lg flex justify-between items-center no-print">
+                <span><i class="fa-solid fa-circle-info mr-1"></i> Kelola jadwal jam kerja & shift untuk seluruh karyawan di sini.</span>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200">
+                <div class="p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                    <h1 class="text-lg font-bold text-slate-800">Jam Kerja</h1>
+                    <div class="flex gap-2">
+                        <input type="text" id="cariShiftInput" onkeyup="renderShiftMasterTable()" placeholder="Cari nama jam kerja..." class="border rounded-lg px-3 py-2 text-xs outline-none w-48">
+                        <button onclick="renderShiftMasterTable()" class="border rounded-lg px-3 text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-rotate"></i></button>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                <th class="p-3">#</th>
+                                <th class="p-3">Nama</th>
+                                <th class="p-3">Jadwal Kerja</th>
+                                <th class="p-3">Jam Kerja</th>
+                                <th class="p-3">Toleransi Keterlambatan</th>
+                                <th class="p-3">Karyawan Terpasang</th>
+                                <th class="p-3">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shiftMasterTableBody" class="divide-y divide-slate-100">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+            </div>
+        </main>
+    </div>
 
     <!-- MODAL UBAH SHIFT KARYAWAN (ADMIN) -->
     <div id="shiftModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -566,124 +732,6 @@
         let currentUser = JSON.parse(sessionStorage.getItem('absensi_session')) || null;
         let currentGPS = "Lokasi belum didapatkan";
 
-        // ================== KONFIGURASI GEOFENCING (DINAMIS & MULTI-TENANT) ==================
-        // Titik koordinat kantor TIDAK LAGI di-hardcode. Setiap instance/perusahaan yang
-        // menjalankan sistem ini mengatur titik lokasinya sendiri lewat Panel Admin > Pengaturan
-        // Kantor & Geofencing, dan datanya disimpan lokal per-browser (localStorage), terpisah
-        // dari perusahaan/pengguna lain.
-        const OFFICE_CONFIG_KEY = 'absensi_office_config';
-        const DEFAULT_OFFICE_CONFIG = { namaKantor: "Kantor Pusat (Belum Diatur)", lat: -6.37280, lng: 106.83060, radiusMeters: 300 };
-
-        function loadOfficeConfig() {
-            const saved = JSON.parse(localStorage.getItem(OFFICE_CONFIG_KEY) || 'null');
-            if (saved && typeof saved.lat === 'number' && typeof saved.lng === 'number' && typeof saved.radiusMeters === 'number') {
-                return saved;
-            }
-            return { ...DEFAULT_OFFICE_CONFIG };
-        }
-
-        // OFFICE_LOCATION adalah sumber kebenaran aktif untuk validasi jarak karyawan.
-        // Bersifat "let" (bukan const) karena nilainya dapat diperbarui secara dinamis oleh Admin,
-        // dan langsung berlaku tanpa perlu mengubah kode.
-        let OFFICE_LOCATION = loadOfficeConfig();
-        let geoState = { lat: null, lng: null, distance: null, withinRadius: false };
-
-        // Simpan konfigurasi kantor baru dari form Admin ke localStorage + terapkan langsung ke OFFICE_LOCATION
-        function saveOfficeConfig(event) {
-            if (event) event.preventDefault();
-            const nama = document.getElementById('cfgNamaKantor').value.trim();
-            const lat = parseFloat(document.getElementById('cfgLat').value);
-            const lng = parseFloat(document.getElementById('cfgLng').value);
-            const radius = parseInt(document.getElementById('cfgRadius').value, 10);
-
-            if (!nama || isNaN(lat) || isNaN(lng) || isNaN(radius) || radius <= 0 || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-                showAlert('Input tidak valid. Pastikan Latitude (-90..90), Longitude (-180..180), dan Radius (>0) terisi benar.');
-                return;
-            }
-
-            OFFICE_LOCATION = { namaKantor: nama, lat, lng, radiusMeters: radius };
-            localStorage.setItem(OFFICE_CONFIG_KEY, JSON.stringify(OFFICE_LOCATION));
-
-            // Reset status verifikasi lokasi lama karena titik acuan kantor berubah
-            geoState = { lat: null, lng: null, distance: null, withinRadius: false };
-            updateGeoBadge();
-            renderOfficeSettingsForm();
-            showAlert(`Pengaturan kantor "<b>${nama}</b>" berhasil disimpan dan langsung aktif.`, 'success');
-        }
-
-        // Isi ulang form Pengaturan Kantor dengan konfigurasi aktif saat ini
-        function renderOfficeSettingsForm() {
-            const namaEl = document.getElementById('cfgNamaKantor');
-            if (!namaEl) return; // form belum ter-render (bukan di panel admin)
-            namaEl.value = OFFICE_LOCATION.namaKantor || '';
-            document.getElementById('cfgLat').value = OFFICE_LOCATION.lat;
-            document.getElementById('cfgLng').value = OFFICE_LOCATION.lng;
-            document.getElementById('cfgRadius').value = OFFICE_LOCATION.radiusMeters;
-            document.getElementById('cfgStatusInfo').innerHTML =
-                `<i class="fa-solid fa-circle-info mr-1"></i>Konfigurasi aktif saat ini: <b>${OFFICE_LOCATION.namaKantor}</b> (${OFFICE_LOCATION.lat.toFixed(6)}, ${OFFICE_LOCATION.lng.toFixed(6)}) — radius ${OFFICE_LOCATION.radiusMeters}m.`;
-        }
-
-        // Tombol "Gunakan Lokasi Saat Ini" di Panel Admin: ambil GPS perangkat admin saat setup awal
-        function useCurrentLocationForOffice() {
-            if (!navigator.geolocation) {
-                showAlert('Perangkat/browser ini tidak mendukung Geolocation API.');
-                return;
-            }
-            const statusEl = document.getElementById('cfgStatusInfo');
-            statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Mengambil lokasi perangkat Anda...';
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    document.getElementById('cfgLat').value = pos.coords.latitude;
-                    document.getElementById('cfgLng').value = pos.coords.longitude;
-                    statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Lokasi berhasil diambil (akurasi ±${Math.round(pos.coords.accuracy)}m). Cek koordinat lalu klik "Simpan Pengaturan Kantor".`;
-                },
-                (err) => {
-                    statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-600 mr-1"></i>Gagal mengambil lokasi: ${err.message}`;
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-            );
-        }
-
-        // Haversine formula: menghitung jarak antara 2 titik koordinat GPS di permukaan bumi (meter)
-        function haversineDistance(lat1, lng1, lat2, lng2) {
-            const R = 6371000; // radius rata-rata bumi (meter)
-            const toRad = (deg) => (deg * Math.PI) / 180;
-            const dLat = toRad(lat2 - lat1);
-            const dLng = toRad(lng2 - lng1);
-            const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            return R * c;
-        }
-
-        // Update badge & kunci/buka tombol absen berdasarkan status radius kantor
-        function updateGeoBadge() {
-            const geoBadge = document.getElementById('geoBadge');
-            const btnMasuk = document.getElementById('btnAbsenMasuk');
-            const btnPulang = document.getElementById('btnAbsenPulang');
-            if (!geoBadge) return;
-
-            if (geoState.distance === null) {
-                geoBadge.innerHTML = '<i class="fa-solid fa-map-pin mr-1"></i> Lokasi belum diverifikasi';
-                geoBadge.className = 'text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-slate-200 text-slate-600 self-center';
-            } else if (geoState.withinRadius) {
-                geoBadge.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Dalam Radius Kantor (±${Math.round(geoState.distance)}m)`;
-                geoBadge.className = 'text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-300 self-center';
-            } else {
-                geoBadge.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Diluar Radius Kantor (±${Math.round(geoState.distance)}m)`;
-                geoBadge.className = 'text-[11px] font-semibold px-2 py-1.5 rounded-lg bg-red-100 text-red-700 border border-red-300 self-center';
-            }
-
-            // KUNCI TOMBOL ABSEN jika pengguna berada di luar radius yang diizinkan
-            // Tombol HIJAU + aktif jika dalam radius, MERAH + terkunci (disabled) jika di luar radius.
-            const locked = !geoState.withinRadius;
-            const activeMasukCls = "text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-700";
-            const lockedMasukCls = "text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed bg-red-400";
-            const activePulangCls = "text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed bg-rose-600 hover:bg-rose-700";
-            const lockedPulangCls = "text-white text-xs px-4 py-2.5 rounded-lg font-bold transition disabled:opacity-40 disabled:cursor-not-allowed bg-red-400";
-            if (btnMasuk) { btnMasuk.disabled = locked; btnMasuk.className = locked ? lockedMasukCls : activeMasukCls; }
-            if (btnPulang) { btnPulang.disabled = locked; btnPulang.className = locked ? lockedPulangCls : activePulangCls; }
-        }
-
         // ================== KEAMANAN LOGIN (ANTI BRUTE-FORCE) ==================
         // Struktur per-username: { failCount, banUntil, banStage, permaBanned }
         let loginSecurity = JSON.parse(localStorage.getItem('absensi_security')) || {};
@@ -713,38 +761,6 @@
             });
         }
 
-        // ================== MANAJEMEN ZONA WAKTU (UTC STORAGE + LOCAL DISPLAY) ==================
-        // Semua data JAM absensi (waktuMasuk/waktuPulang) disimpan dalam format UTC ISO string
-        // (mis. "2026-08-06T01:15:30.000Z") — bukan jam lokal cabang tertentu. Ini penting agar
-        // perusahaan dengan cabang di kota/pulau/negara berbeda zona waktu tetap punya satu acuan
-        // waktu yang absolut dan tidak ambigu di database.
-        // Saat DITAMPILKAN ke layar, nilai UTC ini dikonversi otomatis ke zona waktu LOKAL
-        // perangkat masing-masing pengguna yang sedang melihat (browser bawaan yang menangani ini).
-        function getLocalDateStr(d) {
-            // Tanggal kalender "hari ini" versi LOKAL perangkat (bukan UTC), supaya rekap harian
-            // tetap akurat sesuai hari setempat karyawan yang absen, walau lintas zona waktu.
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-        }
-
-        function isUTCTimeString(val) {
-            return typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val);
-        }
-
-        // Konversi timestamp UTC (ISO string) ke jam lokal perangkat yang sedang membuka halaman.
-        // Kompatibel mundur: jika data lama (sebelum fitur ini) berupa teks jam biasa, tampilkan apa adanya.
-        function formatJamLocal(val) {
-            if (!val || val === '-') return '-';
-            if (!isUTCTimeString(val)) return val; // data lama, sudah berupa teks jam
-            try {
-                return new Date(val).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            } catch (e) {
-                return val;
-            }
-        }
-
         // MASA KERJA
         function hitungMasaKerja(tglMasukStr) {
             if (!tglMasukStr) return "-";
@@ -760,30 +776,17 @@
         }
 
         // HITUNG DURASI JAM KERJA
-        // Mendukung dua format: UTC ISO string (format baru, akurat lintas zona waktu)
-        // dan teks jam lokal lama "HH:MM:SS" (kompatibilitas data lama sebelum fitur ini ada).
         function hitungDurasiKerja(waktuMasuk, waktuPulang) {
             if(!waktuMasuk || !waktuPulang || waktuPulang === '-') return "Sedang Bekerja...";
-
-            let selisihMenit;
-            if (isUTCTimeString(waktuMasuk) && isUTCTimeString(waktuPulang)) {
-                // Format baru: hitung selisih dari timestamp UTC absolut -> akurat walau lewat tengah malam/lintas zona
-                const d1 = new Date(waktuMasuk).getTime();
-                const d2 = new Date(waktuPulang).getTime();
-                if (isNaN(d1) || isNaN(d2)) return "-";
-                selisihMenit = Math.round((d2 - d1) / 60000);
-            } else {
-                // Format lama
-                try {
-                    const [h1, m1] = waktuMasuk.split(':').map(Number);
-                    const [h2, m2] = waktuPulang.split(':').map(Number);
-                    selisihMenit = ((h2 * 60) + m2) - ((h1 * 60) + m1);
-                } catch (e) {
-                    return "-";
-                }
-            }
-
-            if(isNaN(selisihMenit) || selisihMenit < 0) return "-";
+            
+            const [h1, m1] = waktuMasuk.split(':').map(Number);
+            const [h2, m2] = waktuPulang.split(':').map(Number);
+            
+            let totalMenit1 = (h1 * 60) + m1;
+            let totalMenit2 = (h2 * 60) + m2;
+            
+            let selisihMenit = totalMenit2 - totalMenit1;
+            if(selisihMenit < 0) return "-";
 
             let jam = Math.floor(selisihMenit / 60);
             let menit = selisihMenit % 60;
@@ -802,7 +805,8 @@
         function saveLogsToStorage() { localStorage.setItem('absensi_logs', JSON.stringify(absensiLogs)); }
 
         function showAlert(msg, type = 'error') {
-            const el = document.getElementById('globalAlert');
+            const appVisible = !document.getElementById('appWrapper').classList.contains('hidden');
+            const el = document.getElementById(appVisible ? 'globalAlertApp' : 'globalAlert');
             el.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-emerald-100', 'text-emerald-700', 'border-red-300', 'border-emerald-300');
             el.classList.add(type === 'error' ? 'bg-red-100' : 'bg-emerald-100', type === 'error' ? 'text-red-700' : 'text-emerald-700', 'border', type === 'error' ? 'border-red-300' : 'border-emerald-300');
             el.innerHTML = msg;
@@ -937,40 +941,55 @@
         }
 
         function checkSession() {
-            const loginSec = document.getElementById('loginSection');
+            const authWrap = document.getElementById('authWrapper');
+            const appWrap = document.getElementById('appWrapper');
             const karySec = document.getElementById('karyawanSection');
             const hrdSec = document.getElementById('hrdSection');
             const admSec = document.getElementById('adminSection');
-            const userHeader = document.getElementById('userInfoHeader');
-            const roleTabs = document.getElementById('roleNavTabs');
+            const shiftSec = document.getElementById('shiftMasterSection');
 
-            loginSec.classList.add('hidden');
+            const btnPanel = document.getElementById('btnTabPanel');
+            const btnVerif = document.getElementById('btnTabVerifikasi');
+            const btnShiftMaster = document.getElementById('btnTabShiftMaster');
+            const btnUsers = document.getElementById('btnTabUsers');
+            const masterLabel = document.getElementById('masterDataLabel');
+
             karySec.classList.add('hidden');
             hrdSec.classList.add('hidden');
             admSec.classList.add('hidden');
-            roleTabs.classList.add('hidden');
+            shiftSec.classList.add('hidden');
+            btnPanel.classList.add('hidden');
+            btnVerif.classList.add('hidden');
+            btnShiftMaster.classList.add('hidden');
+            btnUsers.classList.add('hidden');
+            masterLabel.classList.add('hidden');
 
             if(!currentUser) {
-                loginSec.classList.remove('hidden');
-                userHeader.classList.add('hidden');
+                authWrap.classList.remove('hidden');
+                appWrap.classList.add('hidden');
                 return;
             }
 
-            userHeader.classList.remove('hidden');
+            authWrap.classList.add('hidden');
+            appWrap.classList.remove('hidden');
             document.getElementById('navUserName').innerText = currentUser.nama;
             document.getElementById('navUserRole').innerText = currentUser.role;
 
             if(currentUser.role === 'karyawan') {
-                karySec.classList.remove('hidden');
-                setupKaryawanView();
+                switchMainTab('absen');
             } else if(currentUser.role === 'hrd') {
-                roleTabs.classList.remove('hidden');
-                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line mr-1";
+                btnPanel.classList.remove('hidden');
+                btnVerif.classList.remove('hidden');
+                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line w-4";
                 document.getElementById('lblTabPanelText').innerText = "Monitoring & Rekap HRD";
                 switchMainTab('absen');
             } else if(currentUser.role === 'admin') {
-                roleTabs.classList.remove('hidden');
-                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-users-gear mr-1";
+                btnPanel.classList.remove('hidden');
+                btnVerif.classList.remove('hidden');
+                btnShiftMaster.classList.remove('hidden');
+                btnUsers.classList.remove('hidden');
+                masterLabel.classList.remove('hidden');
+                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-users-gear w-4";
                 document.getElementById('lblTabPanelText').innerText = "Kelola User & Admin";
                 switchMainTab('absen');
             }
@@ -1010,40 +1029,111 @@
             const hrdSec = document.getElementById('hrdSection');
             const admSec = document.getElementById('adminSection');
             const verSec = document.getElementById('verifikasiSection');
-            const btnAbsen = document.getElementById('btnTabAbsen');
-            const btnPanel = document.getElementById('btnTabPanel');
-            const btnVerif = document.getElementById('btnTabVerifikasi');
-
-            const activeCls = "py-2 px-4 text-xs font-bold border-b-2 border-blue-600 text-blue-600 bg-white rounded-t-lg";
-            const inactiveCls = "py-2 px-4 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 rounded-t-lg";
+            const shiftSec = document.getElementById('shiftMasterSection');
+            const allBtns = ['btnTabAbsen','btnTabPanel','btnTabVerifikasi','btnTabShiftMaster','btnTabUsers'].map(id => document.getElementById(id));
 
             karySec.classList.add('hidden');
             hrdSec.classList.add('hidden');
             admSec.classList.add('hidden');
             verSec.classList.add('hidden');
-            btnAbsen.className = inactiveCls;
-            btnPanel.className = inactiveCls;
-            btnVerif.className = inactiveCls;
+            shiftSec.classList.add('hidden');
+            allBtns.forEach(b => b.classList.remove('active'));
 
             if (tab === 'absen') {
                 karySec.classList.remove('hidden');
-                btnAbsen.className = activeCls;
+                document.getElementById('btnTabAbsen').classList.add('active');
                 setupKaryawanView();
             } else if (tab === 'verifikasi') {
                 verSec.classList.remove('hidden');
-                btnVerif.className = activeCls;
+                document.getElementById('btnTabVerifikasi').classList.add('active');
                 renderVerifikasiSurat();
+            } else if (tab === 'shiftmaster') {
+                shiftSec.classList.remove('hidden');
+                document.getElementById('btnTabShiftMaster').classList.add('active');
+                renderShiftMasterTable();
+            } else if (tab === 'users') {
+                admSec.classList.remove('hidden');
+                document.getElementById('btnTabUsers').classList.add('active');
+                renderAdminUsers();
             } else {
-                btnPanel.className = activeCls;
+                document.getElementById('btnTabPanel').classList.add('active');
                 if (currentUser.role === 'hrd') {
                     hrdSec.classList.remove('hidden');
                     renderTable();
                 } else if (currentUser.role === 'admin') {
                     admSec.classList.remove('hidden');
                     renderAdminUsers();
-                    renderOfficeSettingsForm();
                 }
             }
+        }
+
+        // ================== FLOW REGISTRASI (LANDING PAGE ONBOARDING) ==================
+        let regSelectedBidang = null;
+        function showRegisterFlow() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('registerSection').classList.remove('hidden');
+            goRegStep(1);
+        }
+        function backToLoginFromRegister() {
+            document.getElementById('registerSection').classList.add('hidden');
+            document.getElementById('loginSection').classList.remove('hidden');
+            regSelectedBidang = null;
+            ['regStep1','regStep2','regStep3'].forEach(id => document.getElementById(id).classList.add('hidden'));
+            document.getElementById('regStep4').classList.add('hidden');
+            document.getElementById('regStep1').classList.remove('hidden');
+            document.getElementById('btnBidangNext').disabled = true;
+            document.getElementById('btnBidangNext').className = "mt-6 w-full bg-slate-300 text-white font-semibold py-2.5 rounded-lg text-sm transition cursor-not-allowed";
+            document.querySelectorAll('.bidang-opt').forEach(el => el.classList.remove('border-blue-500','bg-blue-50'));
+        }
+        function selectBidang(nama, iconClass) {
+            regSelectedBidang = nama;
+            document.querySelectorAll('.bidang-opt').forEach(el => el.classList.remove('border-blue-500','bg-blue-50'));
+            event.currentTarget.classList.add('border-blue-500','bg-blue-50');
+            const btn = document.getElementById('btnBidangNext');
+            btn.disabled = false;
+            btn.className = "mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition";
+        }
+        function goRegStep(step) {
+            [1,2,3,4].forEach(n => {
+                document.getElementById('regStep'+n).classList.toggle('hidden', n !== step);
+                const dot = document.getElementById('stepDot'+n).firstElementChild;
+                if (n < step) { dot.className = "w-8 h-8 rounded-full flex items-center justify-center bg-emerald-500 text-white"; dot.innerHTML = '<i class="fa-solid fa-check text-xs"></i>'; }
+                else if (n === step) { dot.className = "w-8 h-8 rounded-full flex items-center justify-center bg-blue-600 text-white"; dot.innerText = n; }
+                else { dot.className = "w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500"; dot.innerText = n; }
+            });
+            if (step === 2) {
+                document.querySelectorAll('input[name="paket"]').forEach(r => {
+                    r.onchange = () => document.getElementById('paketNamaLabel').innerText = r.value;
+                });
+            }
+        }
+        function handleRegisterSubmit(e) {
+            e.preventDefault();
+            const company = document.getElementById('regCompany').value.trim();
+            const email = document.getElementById('regEmail').value.trim();
+            const pass = document.getElementById('regPassword').value;
+            const passConfirm = document.getElementById('regPasswordConfirm').value;
+            const wa = document.getElementById('regWhatsapp').value.trim();
+
+            if (pass !== passConfirm) { alert('Konfirmasi password tidak cocok.'); return; }
+            const usernameTaken = users.some(u => u.username.toLowerCase() === email.toLowerCase());
+            if (usernameTaken) { alert('Email ini sudah terdaftar, silakan gunakan email lain atau masuk.'); return; }
+
+            const newAdmin = {
+                id: "ADM-" + Date.now().toString().slice(-4),
+                nama: company + " Admin",
+                jabatan: "System Admin",
+                tglMasuk: new Date().toISOString().split('T')[0],
+                username: email,
+                pass: pass,
+                role: "admin",
+                shift: "pagi",
+                bidang: regSelectedBidang,
+                whatsapp: wa
+            };
+            users.push(newAdmin);
+            saveUsersToStorage();
+            goRegStep(4);
         }
 
         // ================== AI FACE RECOGNITION (face-api.js) ==================
@@ -1055,61 +1145,7 @@
         let brightnessCanvas = document.createElement('canvas');
 
         // Status live hasil analisa AI, dipakai untuk gating tombol Absen Masuk/Pulang
-        let faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0, liveness: false };
-
-        // ================== LIVENESS DETECTION (ANTI FOTO CETAK) ==================
-        // Mendeteksi kedipan mata (Eye Aspect Ratio) & pergerakan wajah alami sebelum absen divalidasi
-        const EAR_BLINK_THRESHOLD = 0.23; // di bawah nilai ini dianggap mata tertutup
-        const LIVENESS_MOVEMENT_TARGET = 5; // jumlah frame pergerakan wajah wajar untuk lolos alternatif kedipan
-        let livenessState = { closedFrames: 0, blinkCount: 0, blinkDetected: false, lastCenter: null, movementScore: 0 };
-
-        function resetLivenessState() {
-            livenessState = { closedFrames: 0, blinkCount: 0, blinkDetected: false, lastCenter: null, movementScore: 0 };
-        }
-
-        function euclideanDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
-
-        // Eye Aspect Ratio (EAR): rasio tinggi vs lebar mata dari 6 titik landmark mata
-        function calcEAR(eyePoints) {
-            const A = euclideanDist(eyePoints[1], eyePoints[5]);
-            const B = euclideanDist(eyePoints[2], eyePoints[4]);
-            const C = euclideanDist(eyePoints[0], eyePoints[3]);
-            if (C === 0) return 0.3;
-            return (A + B) / (2 * C);
-        }
-
-        // Menganalisis kedipan mata & pergerakan wajah antar-frame untuk memastikan objek adalah wajah hidup, bukan foto statis
-        function processLiveness(ear, box) {
-            // 1. DETEKSI KEDIPAN: mata tertutup (EAR rendah) lalu terbuka kembali dihitung sebagai 1 kedipan
-            if (ear < EAR_BLINK_THRESHOLD) {
-                livenessState.closedFrames++;
-            } else {
-                if (livenessState.closedFrames >= 1) {
-                    livenessState.blinkCount++;
-                    livenessState.blinkDetected = true;
-                }
-                livenessState.closedFrames = 0;
-            }
-
-            // 2. DETEKSI GERAKAN WAJAH ALAMI: pergeseran titik tengah wajah antar-frame (bukan foto diam)
-            if (box) {
-                const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-                if (livenessState.lastCenter) {
-                    const shift = euclideanDist(center, livenessState.lastCenter);
-                    if (shift > 1.5 && shift < 60) livenessState.movementScore++;
-                }
-                livenessState.lastCenter = center;
-            }
-
-            const isLive = livenessState.blinkDetected || livenessState.movementScore >= LIVENESS_MOVEMENT_TARGET;
-            faceState.liveness = isLive;
-
-            if (isLive) {
-                setAiBadge('badgeLiveness', '<i class="fa-solid fa-eye mr-1"></i> Liveness: Terverifikasi', 'bg-emerald-600/85 text-white');
-            } else {
-                setAiBadge('badgeLiveness', '<i class="fa-solid fa-eye-slash mr-1"></i> Liveness: Kedipkan Mata', 'bg-amber-500/85 text-white');
-            }
-        }
+        let faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
 
         async function loadFaceModels() {
             if (faceModelsLoaded || faceModelsLoading) return;
@@ -1148,7 +1184,6 @@
                     placeholder.classList.add('hidden');
                     overlay.classList.remove('hidden');
                     aiBar.classList.remove('hidden');
-                    resetLivenessState();
                     loadFaceModels();
                     if (faceCheckInterval) clearInterval(faceCheckInterval);
                     faceCheckInterval = setInterval(runFaceAnalysis, 700);
@@ -1159,8 +1194,7 @@
         function stopCamera() {
             if(mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
             if (faceCheckInterval) { clearInterval(faceCheckInterval); faceCheckInterval = null; }
-            faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0, liveness: false };
-            resetLivenessState();
+            faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
             const aiBar = document.getElementById('aiStatusBar');
             if (aiBar) aiBar.classList.add('hidden');
         }
@@ -1248,14 +1282,6 @@
                     faceState.occluded = false;
                     setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: Wajah Terlihat Jelas', 'bg-emerald-600/85 text-white');
                 }
-
-                // 4. LIVENESS DETECTION: analisis kedipan mata (EAR) & gerakan wajah alami dari titik landmark
-                if (detection.landmarks && typeof detection.landmarks.getLeftEye === 'function') {
-                    const leftEye = detection.landmarks.getLeftEye();
-                    const rightEye = detection.landmarks.getRightEye();
-                    const ear = (calcEAR(leftEye) + calcEAR(rightEye)) / 2;
-                    processLiveness(ear, box);
-                }
             } catch (err) {
                 console.error('Face analysis error:', err);
             }
@@ -1272,22 +1298,13 @@
             addrEl.innerText = "Mendeteksi lokasi GPS...";
             navigator.geolocation.getCurrentPosition(
                 pos => {
-                    const { latitude, longitude } = pos.coords;
-                    // GEOFENCING: hitung jarak pengguna terhadap koordinat kantor via Haversine formula
-                    const distance = haversineDistance(latitude, longitude, OFFICE_LOCATION.lat, OFFICE_LOCATION.lng);
-                    geoState = { lat: latitude, lng: longitude, distance, withinRadius: distance <= OFFICE_LOCATION.radiusMeters };
-
-                    currentGPS = `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`;
-                    addrEl.innerText = currentGPS + ` — Jarak ± ${Math.round(distance)}m dari ${OFFICE_LOCATION.namaKantor || 'titik kantor'}`;
-                    updateGeoBadge();
+                    currentGPS = `Lat: ${pos.coords.latitude.toFixed(5)}, Lng: ${pos.coords.longitude.toFixed(5)} (Margonda, Depok)`;
+                    addrEl.innerText = currentGPS;
                 },
                 err => {
-                    geoState = { lat: null, lng: null, distance: null, withinRadius: false };
-                    currentGPS = "Lokasi tidak diketahui";
+                    currentGPS = "Depok, Jawa Barat (Estimasi GPS)";
                     addrEl.innerText = currentGPS + " [Izin Lokasi Ditolak]";
-                    updateGeoBadge();
-                },
-                { enableHighAccuracy: true, timeout: 10000 }
+                }
             );
         }
 
@@ -1311,24 +1328,12 @@
             if (!faceState.wellLit) {
                 return showAlert('<b>Pencahayaan kurang mendukung!</b> Sesuaikan pencahayaan ruangan (jangan terlalu gelap/terlalu terang) lalu coba lagi.');
             }
-            if (!faceState.liveness) {
-                return showAlert('<b>Liveness check belum terverifikasi!</b> Kedipkan mata Anda secara alami atau gerakkan sedikit wajah Anda di depan kamera. Langkah ini mencegah kecurangan absen menggunakan foto cetak/statis.');
-            }
-
-            // ================== GATING GEOFENCING (RADIUS KANTOR) ==================
-            if (geoState.distance === null) {
-                return showAlert('<b>Lokasi belum diverifikasi!</b> Klik tombol "Ambil Lokasi" terlebih dahulu untuk memvalidasi posisi GPS Anda.');
-            }
-            if (!geoState.withinRadius) {
-                return showAlert(`<b>Diluar Jangkauan Kantor!</b> Anda berada ±${Math.round(geoState.distance)} meter dari titik kantor. Absen hanya diizinkan dalam radius ${OFFICE_LOCATION.radiusMeters} meter.`);
-            }
 
             const now = new Date();
-            const todayStr = getLocalDateStr(now); // tanggal kalender lokal perangkat (bukan UTC) — akurat lintas zona waktu
+            const todayStr = now.toISOString().split('T')[0];
             const jamNow = now.getHours();
             const menitNow = now.getMinutes();
-            const waktuStr = now.toLocaleTimeString('id-ID'); // untuk teks notifikasi seketika ke karyawan ybs
-            const nowUTCISO = now.toISOString(); // DISIMPAN ke database/localStorage dalam UTC (absolut, tidak ambigu antar cabang)
+            const waktuStr = now.toLocaleTimeString('id-ID');
             const shiftCfg = getShiftConfig(currentUser); // Jam masuk/pulang mengikuti shift karyawan (Pagi/Siang), total tetap 8 jam
 
             // Cari apakah user sudah pernah absen hari ini
@@ -1353,7 +1358,7 @@
                     tglMasuk: currentUser.tglMasuk,
                     shift: currentUser.shift || 'pagi',
                     status: status,
-                    waktuMasuk: nowUTCISO,
+                    waktuMasuk: waktuStr,
                     waktuPulang: '-',
                     tanggal: todayStr,
                     lokasi: currentGPS
@@ -1382,10 +1387,10 @@
                 }
 
                 // Update jam pulang record hari ini
-                existingRecord.waktuPulang = nowUTCISO;
+                existingRecord.waktuPulang = waktuStr;
                 saveLogsToStorage();
                 
-                const jamKerja = hitungDurasiKerja(existingRecord.waktuMasuk, nowUTCISO);
+                const jamKerja = hitungDurasiKerja(existingRecord.waktuMasuk, waktuStr);
                 showAlert(`Berhasil Absen Pulang pukul ${waktuStr}. Total Jam Kerja: <b>${jamKerja}</b>`, 'success');
             }
 
@@ -1426,9 +1431,9 @@
                 jabatan: currentUser.jabatan,
                 tglMasuk: currentUser.tglMasuk,
                 status: jenis,
-                waktuMasuk: now.toISOString(),
+                waktuMasuk: now.toLocaleTimeString('id-ID'),
                 waktuPulang: '-',
-                tanggal: getLocalDateStr(now),
+                tanggal: now.toISOString().split('T')[0],
                 lokasi: 'Keterangan: ' + alasan,
                 suratDokter: suratDokter,
                 statusVerifikasi: jenis === 'Sakit' ? 'Menunggu Verifikasi' : null,
@@ -1528,8 +1533,8 @@
                         <td class="p-3"><b>${log.tanggal}</b></td>
                         <td class="p-3"><b>${log.nama}</b><br><span class="text-[10px] text-slate-400">${log.userId}</span></td>
                         <td class="p-3">${log.jabatan}<br><span class="text-[10px] text-indigo-600 font-medium">Shift ${shiftLabel}</span> · <span class="text-[10px] text-blue-600 font-medium">${masaKerja}</span></td>
-                        <td class="p-3 font-semibold text-emerald-600"><i class="fa-solid fa-right-to-bracket mr-1"></i>${formatJamLocal(log.waktuMasuk)}</td>
-                        <td class="p-3 font-semibold text-rose-600"><i class="fa-solid fa-right-from-bracket mr-1"></i>${formatJamLocal(log.waktuPulang)}</td>
+                        <td class="p-3 font-semibold text-emerald-600"><i class="fa-solid fa-right-to-bracket mr-1"></i>${log.waktuMasuk}</td>
+                        <td class="p-3 font-semibold text-rose-600"><i class="fa-solid fa-right-from-bracket mr-1"></i>${log.waktuPulang}</td>
                         <td class="p-3 font-bold text-slate-700">${durasi}</td>
                         <td class="p-3">${statusBadge}</td>
                         <td class="p-3">${rekapHtml}</td>
@@ -1626,6 +1631,40 @@
             closeSuratPreview();
             renderVerifikasiSurat();
             showAlert(`Surat dokter dari <b>${log.nama}</b> telah <b>${keputusan}</b>.`, keputusan === 'Disetujui' ? 'success' : 'error');
+        }
+
+        // ================== MASTER DATA: TABEL JAM KERJA / SHIFT ==================
+        function renderShiftMasterTable() {
+            const tbody = document.getElementById('shiftMasterTableBody');
+            const searchEl = document.getElementById('cariShiftInput');
+            const keyword = searchEl ? searchEl.value.trim().toLowerCase() : '';
+            tbody.innerHTML = '';
+
+            const rows = Object.keys(SHIFT_CONFIG).filter(key => {
+                const cfg = SHIFT_CONFIG[key];
+                return !keyword || cfg.label.toLowerCase().includes(keyword) || ('shift ' + cfg.label.toLowerCase()).includes(keyword);
+            });
+
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400 italic">Jam kerja tidak ditemukan.</td></tr>`;
+                return;
+            }
+
+            rows.forEach((key, idx) => {
+                const cfg = SHIFT_CONFIG[key];
+                const jumlahKaryawan = users.filter(u => (u.shift || 'pagi') === key).length;
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3">${idx + 1}</td>
+                        <td class="p-3 font-semibold text-slate-700">Shift ${cfg.label}</td>
+                        <td class="p-3">Senin - Sabtu</td>
+                        <td class="p-3">${cfg.labelMasuk} - ${cfg.labelPulang}</td>
+                        <td class="p-3">15 menit</td>
+                        <td class="p-3"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold">${jumlahKaryawan} Karyawan</span></td>
+                        <td class="p-3"><span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold">AKTIF</span></td>
+                    </tr>
+                `;
+            });
         }
 
         function renderAdminUsers() {
@@ -1729,15 +1768,6 @@
             if(!val) return alert('Isi email/username');
             closeForgotModal();
             showAlert(`Sistem mengirim link reset password ke email (${val}).`, 'success');
-        }
-
-        // ================== PWA: REGISTRASI SERVICE WORKER ==================
-        // Memungkinkan aplikasi ini diinstal ke home screen & tetap dapat dibuka meski koneksi terbatas
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js')
-                    .catch(err => console.warn('Registrasi Service Worker gagal:', err));
-            });
         }
     </script>
 </body>
