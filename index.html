@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!D<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Face Recognition AI Engine (face-api.js) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         @media print {
             .no-print { display: none !important; }
@@ -51,6 +53,10 @@
             </button>
             <button id="btnTabPanel" onclick="switchMainTab('panel')" class="py-2 px-4 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 rounded-t-lg">
                 <i id="lblTabPanelIcon" class="fa-solid fa-chart-line mr-1"></i> <span id="lblTabPanelText">Panel Kontrol</span>
+            </button>
+            <button id="btnTabVerifikasi" onclick="switchMainTab('verifikasi')" class="py-2 px-4 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 rounded-t-lg">
+                <i class="fa-solid fa-file-medical mr-1"></i> Verifikasi Surat Dokter
+                <span id="badgeSuratPending" class="hidden ml-1 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span>
             </button>
         </div>
 
@@ -125,7 +131,25 @@
                             <p id="ovJabatan">Jabatan: -</p>
                             <p class="text-[10px] text-slate-300 pt-1 border-t border-slate-700" id="ovTime"><i class="fa-solid fa-clock mr-1"></i>--:--:--</p>
                         </div>
+
+                        <!-- BADGE STATUS AI FACE RECOGNITION (Wajah / Oklusi / Cahaya) -->
+                        <div id="aiStatusBar" class="hidden absolute top-3 left-3 right-3 flex flex-wrap gap-1.5">
+                            <span id="badgeModel" class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-sm">
+                                <i class="fa-solid fa-microchip mr-1"></i> Memuat Model AI...
+                            </span>
+                            <span id="badgeFace" class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-sm">
+                                <i class="fa-solid fa-face-viewfinder mr-1"></i> Wajah: -
+                            </span>
+                            <span id="badgeOcclusion" class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-sm">
+                                <i class="fa-solid fa-mask mr-1"></i> Oklusi: -
+                            </span>
+                            <span id="badgeLight" class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-700/80 text-slate-200 backdrop-blur-sm">
+                                <i class="fa-solid fa-sun mr-1"></i> Cahaya: -
+                            </span>
+                        </div>
                     </div>
+
+                    <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI akan memindai wajah, oklusi (wajah tertutup), dan kondisi cahaya secara live sebelum absen bisa dikirim.</p>
 
                     <div class="mt-4 flex flex-wrap gap-2">
                         <button onclick="startCamera()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
@@ -169,6 +193,7 @@
                             <div id="containerUploadSurat" class="hidden">
                                 <label class="block text-xs font-semibold text-slate-600 mb-1">Upload Surat Dokter <span class="text-red-500">*</span></label>
                                 <input type="file" id="fileSuratDokter" accept="image/*,.pdf" class="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border rounded-lg cursor-pointer">
+                                <p class="text-[10px] text-slate-400 mt-1"><i class="fa-solid fa-circle-info mr-1"></i>Surat akan diverifikasi oleh HRD/Admin. Status verifikasi bisa dilihat pada Statistik Saya.</p>
                             </div>
 
                             <div>
@@ -196,6 +221,14 @@
                             <div class="p-2 bg-blue-50 text-blue-700 rounded border border-blue-200">
                                 <span class="block font-bold text-lg" id="statMySakit">0</span> Sakit
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- STATUS VERIFIKASI SURAT DOKTER SAYA -->
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <h3 class="font-bold text-sm text-slate-700 mb-3"><i class="fa-solid fa-file-medical text-rose-500 mr-2"></i>Status Surat Dokter Saya</h3>
+                        <div id="mySuratStatusList" class="space-y-2 text-xs">
+                            <p class="text-slate-400 italic">Belum ada pengajuan sakit dengan surat dokter.</p>
                         </div>
                     </div>
                 </div>
@@ -316,6 +349,7 @@
                                     <th class="p-2">Jabatan</th>
                                     <th class="p-2">Masa Kerja</th>
                                     <th class="p-2">Role</th>
+                                    <th class="p-2">Keamanan Login</th>
                                     <th class="p-2 text-center">Aksi</th>
                                 </tr>
                             </thead>
@@ -328,7 +362,102 @@
             </div>
         </section>
 
+        <!-- 5. PANEL VERIFIKASI SURAT DOKTER (HRD & ADMIN) -->
+        <section id="verifikasiSection" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h1 class="text-xl font-bold text-slate-800">Verifikasi Surat Keterangan Dokter</h1>
+                <p class="text-xs text-slate-500">Periksa dan verifikasi surat dokter yang dikirimkan oleh karyawan untuk pengajuan Sakit.</p>
+            </div>
+
+            <div class="grid grid-cols-3 gap-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-amber-500">
+                    <p class="text-xs text-slate-500 font-semibold uppercase">Menunggu</p>
+                    <p id="suratStatPending" class="text-2xl font-bold text-amber-600">0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-emerald-500">
+                    <p class="text-xs text-slate-500 font-semibold uppercase">Disetujui</p>
+                    <p id="suratStatApproved" class="text-2xl font-bold text-emerald-600">0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-red-500">
+                    <p class="text-xs text-slate-500 font-semibold uppercase">Ditolak</p>
+                    <p id="suratStatRejected" class="text-2xl font-bold text-red-600">0</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 border-b border-slate-200">
+                    <h3 class="font-bold text-sm text-slate-700">Daftar Pengajuan Sakit & Surat Dokter</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                <th class="p-3">Tanggal</th>
+                                <th class="p-3">Karyawan</th>
+                                <th class="p-3">Keterangan</th>
+                                <th class="p-3">Surat</th>
+                                <th class="p-3">Status Verifikasi</th>
+                                <th class="p-3 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="suratTableBody" class="divide-y divide-slate-100">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
     </main>
+
+    <!-- MODAL PREVIEW SURAT DOKTER -->
+    <div id="suratPreviewModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-base text-slate-800"><i class="fa-solid fa-file-medical text-rose-500 mr-2"></i>Preview Surat Dokter</h3>
+                <button onclick="closeSuratPreview()" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="suratPreviewInfo" class="text-xs text-slate-600 space-y-1 bg-slate-50 p-3 rounded-lg border border-slate-200"></div>
+            <div id="suratPreviewContent" class="border rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center min-h-[200px]"></div>
+
+            <div id="suratVerifikasiActions" class="space-y-2">
+                <textarea id="catatanVerifikasi" rows="2" class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="Catatan verifikasi (opsional)..."></textarea>
+                <div class="flex gap-2">
+                    <button onclick="verifikasiSurat('Disetujui')" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg transition"><i class="fa-solid fa-check mr-1"></i>Setujui</button>
+                    <button onclick="verifikasiSurat('Ditolak')" class="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded-lg transition"><i class="fa-solid fa-xmark mr-1"></i>Tolak</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL AKUN TERKUNCI PERMANEN (KEAMANAN LOGIN) -->
+    <div id="accountLockedModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
+            <div class="text-center">
+                <i class="fa-solid fa-lock text-red-500 text-3xl mb-2"></i>
+                <h3 class="font-bold text-base text-slate-800">Akun Terkunci Permanen</h3>
+                <p class="text-xs text-slate-500 mt-1">Terlalu banyak percobaan login gagal. Demi keamanan, akun ini dikunci permanen. Buat username & password baru untuk mengakses kembali akun Anda.</p>
+            </div>
+            <div class="space-y-2">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">ID Karyawan / Username Lama</label>
+                    <input type="text" id="recoverOldId" class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="Contoh: EMP-001 atau username lama">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Username Baru</label>
+                    <input type="text" id="recoverNewUsername" class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="Username baru">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Password Baru</label>
+                    <input type="password" id="recoverNewPassword" class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="Password baru (min 4 karakter)">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-2 pt-2">
+                <button onclick="closeAccountLockedModal()" class="px-3 py-1.5 text-xs rounded-lg border text-slate-600 hover:bg-slate-100">Batal</button>
+                <button onclick="handleAccountRecovery()" class="px-4 py-1.5 text-xs rounded-lg bg-red-600 text-white hover:bg-red-700 font-medium">Pulihkan Akun</button>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL LUPA PASSWORD -->
     <div id="forgotModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -360,6 +489,35 @@
         let absensiLogs = JSON.parse(localStorage.getItem('absensi_logs')) || [];
         let currentUser = JSON.parse(sessionStorage.getItem('absensi_session')) || null;
         let currentGPS = "Lokasi belum didapatkan";
+
+        // ================== KEAMANAN LOGIN (ANTI BRUTE-FORCE) ==================
+        // Struktur per-username: { failCount, banUntil, banStage, permaBanned }
+        let loginSecurity = JSON.parse(localStorage.getItem('absensi_security')) || {};
+        function saveSecurity() { localStorage.setItem('absensi_security', JSON.stringify(loginSecurity)); }
+
+        // Karyawan biasa: lebih ketat. Admin/HRD: diberi kelonggaran (threshold lebih tinggi, tanpa banned permanen).
+        const SECURITY_RULES = {
+            karyawan: { maxAttempt: 3, baseBanSeconds: 30, escalate: true, permaAfterStage: 3 },
+            leniency: { maxAttempt: 5, baseBanSeconds: 15, escalate: false, permaAfterStage: Infinity } // admin & hrd
+        };
+
+        function getSecKey(username) { return (username || '').trim().toLowerCase(); }
+
+        function getRuleForUsername(uInput) {
+            const u = users.find(x => x.username.toLowerCase() === uInput.toLowerCase() || x.id.toLowerCase() === uInput.toLowerCase());
+            if (u && (u.role === 'admin' || u.role === 'hrd')) return SECURITY_RULES.leniency;
+            return SECURITY_RULES.karyawan;
+        }
+
+        // ================== SURAT DOKTER: FILE READER HELPER ==================
+        function readFileAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
 
         // MASA KERJA
         function hitungMasaKerja(tglMasukStr) {
@@ -398,6 +556,7 @@
             saveUsersToStorage();
             checkSession();
             setInterval(updateOverlayTime, 1000);
+            setTimeout(loadFaceModels, 800); // preload model AI di background
         });
 
         function saveUsersToStorage() { localStorage.setItem('absensi_users', JSON.stringify(users)); }
@@ -415,16 +574,119 @@
             e.preventDefault();
             const uInput = document.getElementById('loginUser').value.trim();
             const pInput = document.getElementById('loginPass').value.trim();
+            if (!uInput || !pInput) return;
+
+            const secKey = getSecKey(uInput);
+            let sec = loginSecurity[secKey] || { failCount: 0, banUntil: 0, banStage: 0, permaBanned: false };
+
+            // 1. Cek apakah akun dikunci PERMANEN
+            if (sec.permaBanned) {
+                openAccountLockedModal(uInput);
+                return;
+            }
+
+            // 2. Cek apakah sedang dalam masa BANNED sementara
+            const now = Date.now();
+            if (sec.banUntil && sec.banUntil > now) {
+                const sisaDetik = Math.ceil((sec.banUntil - now) / 1000);
+                showAlert(`<b>Akun diblokir sementara!</b> Terlalu banyak percobaan gagal. Coba lagi dalam <b>${sisaDetik} detik</b>.`);
+                return;
+            }
+
             const found = users.find(u => (u.username === uInput || u.id === uInput) && u.pass === pInput);
 
-            if(found) {
+            if (found) {
+                // Login berhasil -> reset seluruh riwayat keamanan akun ini
+                delete loginSecurity[secKey];
+                saveSecurity();
                 currentUser = found;
                 sessionStorage.setItem('absensi_session', JSON.stringify(currentUser));
                 showAlert(`Selamat datang kembali, <b>${currentUser.nama}</b>!`, 'success');
                 checkSession();
-            } else {
-                showAlert('Email / Username / Password salah!');
+                return;
             }
+
+            // Login gagal -> proses eskalasi keamanan
+            const rule = getRuleForUsername(uInput);
+            sec.failCount = (sec.failCount || 0) + 1;
+
+            if (sec.failCount >= rule.maxAttempt) {
+                sec.banStage = (sec.banStage || 0) + 1;
+                sec.failCount = 0;
+
+                if (sec.banStage >= rule.permaAfterStage) {
+                    // Sudah 3x kena banned (khusus role karyawan) -> kunci permanen
+                    sec.permaBanned = true;
+                    sec.banUntil = 0;
+                    loginSecurity[secKey] = sec;
+                    saveSecurity();
+                    openAccountLockedModal(uInput);
+                    return;
+                } else {
+                    // Waktu banned bertambah setiap kali kena banned lagi (eskalasi)
+                    const durasi = rule.escalate
+                        ? rule.baseBanSeconds * Math.pow(2, sec.banStage - 1)
+                        : rule.baseBanSeconds;
+                    sec.banUntil = now + (durasi * 1000);
+                    loginSecurity[secKey] = sec;
+                    saveSecurity();
+                    showAlert(`<b>Terlalu banyak percobaan gagal (${rule.maxAttempt}x)!</b> Akun diblokir sementara selama <b>${durasi} detik</b>.`);
+                    return;
+                }
+            }
+
+            loginSecurity[secKey] = sec;
+            saveSecurity();
+            const sisaPercobaan = rule.maxAttempt - sec.failCount;
+            showAlert(`Email / Username / Password salah! Sisa percobaan sebelum diblokir: <b>${sisaPercobaan}x</b>.`);
+        }
+
+        // ================== MODAL PEMULIHAN AKUN (BANNED PERMANEN) ==================
+        function openAccountLockedModal(prefillId) {
+            document.getElementById('recoverOldId').value = prefillId || '';
+            document.getElementById('recoverNewUsername').value = '';
+            document.getElementById('recoverNewPassword').value = '';
+            document.getElementById('accountLockedModal').classList.remove('hidden');
+        }
+        function closeAccountLockedModal() {
+            document.getElementById('accountLockedModal').classList.add('hidden');
+        }
+        function handleAccountRecovery() {
+            const oldId = document.getElementById('recoverOldId').value.trim();
+            const newUsername = document.getElementById('recoverNewUsername').value.trim();
+            const newPassword = document.getElementById('recoverNewPassword').value.trim();
+
+            if (!oldId || !newUsername || !newPassword) return alert('Semua kolom wajib diisi.');
+            if (newPassword.length < 4) return alert('Password baru minimal 4 karakter.');
+
+            const u = users.find(x => x.username.toLowerCase() === oldId.toLowerCase() || x.id.toLowerCase() === oldId.toLowerCase());
+            if (!u) return alert('ID Karyawan / Username lama tidak ditemukan.');
+
+            const usernameTaken = users.some(x => x !== u && x.username.toLowerCase() === newUsername.toLowerCase());
+            if (usernameTaken) return alert('Username baru sudah digunakan, silakan pilih yang lain.');
+
+            const oldKey = getSecKey(u.username);
+            u.username = newUsername;
+            u.pass = newPassword;
+            saveUsersToStorage();
+
+            // Hapus seluruh riwayat banned untuk akun ini (username lama maupun baru)
+            delete loginSecurity[oldKey];
+            delete loginSecurity[getSecKey(newUsername)];
+            saveSecurity();
+
+            closeAccountLockedModal();
+            showAlert('Akun berhasil dipulihkan! Silakan login dengan username & password baru Anda.', 'success');
+        }
+
+        // Admin: reset paksa status keamanan login user tertentu (kelonggaran untuk Admin/HRD & bantu karyawan terkunci)
+        function resetUserSecurity(username) {
+            const key = getSecKey(username);
+            if (!loginSecurity[key]) { showAlert('Tidak ada riwayat blokir untuk user ini.'); return; }
+            delete loginSecurity[key];
+            saveSecurity();
+            renderAdminUsers();
+            showAlert(`Status keamanan login untuk <b>${username}</b> berhasil direset.`, 'success');
         }
 
         function logout() {
@@ -473,6 +735,20 @@
                 document.getElementById('lblTabPanelText').innerText = "Kelola User & Admin";
                 switchMainTab('absen');
             }
+            updateSuratPendingBadge();
+        }
+
+        // Badge notifikasi jumlah surat dokter yang menunggu verifikasi (di tab HRD/Admin)
+        function updateSuratPendingBadge() {
+            const badge = document.getElementById('badgeSuratPending');
+            if (!badge) return;
+            const pendingCount = absensiLogs.filter(l => l.status === 'Sakit' && l.statusVerifikasi === 'Menunggu Verifikasi').length;
+            if (pendingCount > 0) {
+                badge.innerText = pendingCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
         }
 
         function setupKaryawanView() {
@@ -487,50 +763,191 @@
             const karySec = document.getElementById('karyawanSection');
             const hrdSec = document.getElementById('hrdSection');
             const admSec = document.getElementById('adminSection');
+            const verSec = document.getElementById('verifikasiSection');
             const btnAbsen = document.getElementById('btnTabAbsen');
             const btnPanel = document.getElementById('btnTabPanel');
+            const btnVerif = document.getElementById('btnTabVerifikasi');
+
+            const activeCls = "py-2 px-4 text-xs font-bold border-b-2 border-blue-600 text-blue-600 bg-white rounded-t-lg";
+            const inactiveCls = "py-2 px-4 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 rounded-t-lg";
+
+            karySec.classList.add('hidden');
+            hrdSec.classList.add('hidden');
+            admSec.classList.add('hidden');
+            verSec.classList.add('hidden');
+            btnAbsen.className = inactiveCls;
+            btnPanel.className = inactiveCls;
+            btnVerif.className = inactiveCls;
 
             if (tab === 'absen') {
                 karySec.classList.remove('hidden');
-                hrdSec.classList.add('hidden');
-                admSec.classList.add('hidden');
-                btnAbsen.className = "py-2 px-4 text-xs font-bold border-b-2 border-blue-600 text-blue-600 bg-white rounded-t-lg";
-                btnPanel.className = "py-2 px-4 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 rounded-t-lg";
+                btnAbsen.className = activeCls;
                 setupKaryawanView();
+            } else if (tab === 'verifikasi') {
+                verSec.classList.remove('hidden');
+                btnVerif.className = activeCls;
+                renderVerifikasiSurat();
             } else {
-                karySec.classList.add('hidden');
-                btnPanel.className = "py-2 px-4 text-xs font-bold border-b-2 border-blue-600 text-blue-600 bg-white rounded-t-lg";
-                btnAbsen.className = "py-2 px-4 text-xs font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-800 rounded-t-lg";
+                btnPanel.className = activeCls;
                 if (currentUser.role === 'hrd') {
                     hrdSec.classList.remove('hidden');
-                    admSec.classList.add('hidden');
                     renderTable();
                 } else if (currentUser.role === 'admin') {
                     admSec.classList.remove('hidden');
-                    hrdSec.classList.add('hidden');
                     renderAdminUsers();
                 }
             }
         }
 
-        // KAMERA & GPS
+        // ================== AI FACE RECOGNITION (face-api.js) ==================
+        // Model dimuat dari CDN: TinyFaceDetector (deteksi wajah) + FaceLandmark68Tiny (titik wajah, untuk cek oklusi)
+        const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+        let faceModelsLoaded = false;
+        let faceModelsLoading = false;
+        let faceCheckInterval = null;
+        let brightnessCanvas = document.createElement('canvas');
+
+        // Status live hasil analisa AI, dipakai untuk gating tombol Absen Masuk/Pulang
+        let faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
+
+        async function loadFaceModels() {
+            if (faceModelsLoaded || faceModelsLoading) return;
+            faceModelsLoading = true;
+            try {
+                if (typeof faceapi === 'undefined') {
+                    // Script CDN belum siap (defer), coba lagi sesaat lagi
+                    faceModelsLoading = false;
+                    setTimeout(loadFaceModels, 500);
+                    return;
+                }
+                await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL);
+                await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODEL_URL);
+                faceModelsLoaded = true;
+                const badge = document.getElementById('badgeModel');
+                if (badge) badge.innerHTML = '<i class="fa-solid fa-microchip mr-1"></i>Model AI: Siap';
+            } catch (err) {
+                const badge = document.getElementById('badgeModel');
+                if (badge) badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i>Model AI Gagal Dimuat';
+                console.error('Gagal memuat model face-api:', err);
+            } finally {
+                faceModelsLoading = false;
+            }
+        }
+
         let mediaStream = null;
         function startCamera() {
             const video = document.getElementById('webcam');
             const placeholder = document.getElementById('cameraPlaceholder');
             const overlay = document.getElementById('cameraOverlayInfo');
+            const aiBar = document.getElementById('aiStatusBar');
             navigator.mediaDevices.getUserMedia({ video: true })
                 .then(stream => {
                     mediaStream = stream;
                     video.srcObject = stream;
                     placeholder.classList.add('hidden');
                     overlay.classList.remove('hidden');
+                    aiBar.classList.remove('hidden');
+                    loadFaceModels();
+                    if (faceCheckInterval) clearInterval(faceCheckInterval);
+                    faceCheckInterval = setInterval(runFaceAnalysis, 700);
                 })
                 .catch(err => showAlert('Gagal mengakses kamera: ' + err.message));
         }
 
         function stopCamera() {
             if(mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
+            if (faceCheckInterval) { clearInterval(faceCheckInterval); faceCheckInterval = null; }
+            faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
+            const aiBar = document.getElementById('aiStatusBar');
+            if (aiBar) aiBar.classList.add('hidden');
+        }
+
+        // Hitung tingkat kecerahan rata-rata frame kamera (0-255) untuk deteksi Light Detection
+        function measureBrightness(video) {
+            const w = 48, h = 36;
+            brightnessCanvas.width = w; brightnessCanvas.height = h;
+            const ctx = brightnessCanvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, w, h);
+            let data;
+            try { data = ctx.getImageData(0, 0, w, h).data; } catch(e) { return 128; }
+            let total = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                // Luminance perceptual
+                total += (0.299 * data[i]) + (0.587 * data[i+1]) + (0.114 * data[i+2]);
+            }
+            return total / (data.length / 4);
+        }
+
+        function setAiBadge(id, text, colorClass) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.className = `text-[10px] font-bold px-2 py-1 rounded-full backdrop-blur-sm ${colorClass}`;
+            el.innerHTML = text;
+        }
+
+        async function runFaceAnalysis() {
+            const video = document.getElementById('webcam');
+            if (!mediaStream || !video || video.readyState < 2) return;
+
+            // 1. LIGHT DETECTION
+            const brightness = measureBrightness(video);
+            if (brightness < 55) {
+                faceState.wellLit = false;
+                setAiBadge('badgeLight', '<i class="fa-solid fa-moon mr-1"></i>Cahaya: Terlalu Gelap', 'bg-red-600/85 text-white');
+            } else if (brightness > 210) {
+                faceState.wellLit = false;
+                setAiBadge('badgeLight', '<i class="fa-solid fa-sun mr-1"></i>Cahaya: Terlalu Terang', 'bg-red-600/85 text-white');
+            } else {
+                faceState.wellLit = true;
+                setAiBadge('badgeLight', '<i class="fa-solid fa-sun mr-1"></i>Cahaya: Baik', 'bg-emerald-600/85 text-white');
+            }
+
+            // 2. MODEL BELUM SIAP
+            if (!faceModelsLoaded) {
+                setAiBadge('badgeModel', '<i class="fa-solid fa-microchip mr-1"></i>Memuat Model AI...', 'bg-slate-700/85 text-slate-200');
+                setAiBadge('badgeFace', '<i class="fa-solid fa-face-viewfinder mr-1"></i>Wajah: Menunggu Model', 'bg-slate-700/85 text-slate-200');
+                setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: -', 'bg-slate-700/85 text-slate-200');
+                faceState.faceDetected = false;
+                faceState.occluded = true;
+                return;
+            }
+            setAiBadge('badgeModel', '<i class="fa-solid fa-microchip mr-1"></i>Model AI: Aktif', 'bg-slate-700/85 text-slate-200');
+
+            // 3. FACE DETECTION + LANDMARK (untuk estimasi OKLUSI)
+            try {
+                const detection = await faceapi
+                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+                    .withFaceLandmarks(true);
+
+                if (!detection) {
+                    faceState.faceDetected = false;
+                    faceState.occluded = true;
+                    faceState.score = 0;
+                    setAiBadge('badgeFace', '<i class="fa-solid fa-face-viewfinder mr-1"></i>Wajah: Tidak Terdeteksi', 'bg-red-600/85 text-white');
+                    setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: -', 'bg-slate-700/85 text-slate-200');
+                    return;
+                }
+
+                faceState.faceDetected = true;
+                faceState.score = detection.detection.score;
+                setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>Wajah: Terdeteksi (${Math.round(faceState.score*100)}%)`, 'bg-emerald-600/85 text-white');
+
+                // Estimasi oklusi: skor confidence rendah / bbox terlalu kecil biasanya karena wajah tertutup (masker, tangan, topi, dsb)
+                const box = detection.detection.box;
+                const relativeArea = (box.width * box.height) / (video.videoWidth * video.videoHeight || 1);
+                const lowConfidence = faceState.score < 0.6;
+                const tooSmall = relativeArea < 0.03;
+
+                if (lowConfidence || tooSmall) {
+                    faceState.occluded = true;
+                    setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: Wajah Tertutup/Kurang Jelas', 'bg-red-600/85 text-white');
+                } else {
+                    faceState.occluded = false;
+                    setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: Wajah Terlihat Jelas', 'bg-emerald-600/85 text-white');
+                }
+            } catch (err) {
+                console.error('Face analysis error:', err);
+            }
         }
 
         function updateOverlayTime() {
@@ -557,6 +974,23 @@
         // LOGIKA ABSEN MASUK & PULANG (LENGKAP DENGAN ANTI-CHEAT)
         function submitAbsen(tipe) {
             if(!currentUser) return;
+
+            // ================== GATING VERIFIKASI AI FACE RECOGNITION ==================
+            if (!mediaStream) {
+                return showAlert('<b>Kamera belum dibuka!</b> Klik "Buka Kamera" terlebih dahulu untuk verifikasi wajah.');
+            }
+            if (!faceModelsLoaded) {
+                return showAlert('<b>Model AI masih dimuat.</b> Mohon tunggu beberapa detik lalu coba lagi.');
+            }
+            if (!faceState.faceDetected) {
+                return showAlert('<b>Wajah tidak terdeteksi!</b> Posisikan wajah Anda tepat di depan kamera.');
+            }
+            if (faceState.occluded) {
+                return showAlert('<b>Wajah terhalang!</b> Pastikan wajah tidak tertutup masker/tangan/topi dan terlihat jelas oleh kamera.');
+            }
+            if (!faceState.wellLit) {
+                return showAlert('<b>Pencahayaan kurang mendukung!</b> Sesuaikan pencahayaan ruangan (jangan terlalu gelap/terlalu terang) lalu coba lagi.');
+            }
 
             const now = new Date();
             const todayStr = now.toISOString().split('T')[0];
@@ -625,11 +1059,25 @@
             else container.classList.add('hidden');
         }
 
-        function submitIzin(e) {
+        async function submitIzin(e) {
             e.preventDefault();
             const jenis = document.getElementById('jenisIzin').value;
             const alasan = document.getElementById('alasanIzin').value;
+            const fileInput = document.getElementById('fileSuratDokter');
             const now = new Date();
+
+            let suratDokter = null;
+            if (jenis === 'Sakit') {
+                const file = fileInput.files[0];
+                if (!file) { showAlert('Surat dokter wajib diupload untuk pengajuan Sakit!'); return; }
+                if (file.size > 4 * 1024 * 1024) { showAlert('Ukuran file surat dokter maksimal 4MB.'); return; }
+                try {
+                    const dataUrl = await readFileAsDataURL(file);
+                    suratDokter = { name: file.name, type: file.type, dataUrl: dataUrl };
+                } catch (err) {
+                    showAlert('Gagal membaca file surat dokter.'); return;
+                }
+            }
 
             const newLog = {
                 id: Date.now(),
@@ -641,12 +1089,18 @@
                 waktuMasuk: now.toLocaleTimeString('id-ID'),
                 waktuPulang: '-',
                 tanggal: now.toISOString().split('T')[0],
-                lokasi: 'Keterangan: ' + alasan
+                lokasi: 'Keterangan: ' + alasan,
+                suratDokter: suratDokter,
+                statusVerifikasi: jenis === 'Sakit' ? 'Menunggu Verifikasi' : null,
+                catatanVerifikasi: '',
+                verifikatorNama: ''
             };
 
             absensiLogs.unshift(newLog);
             saveLogsToStorage();
-            showAlert(`Pengajuan ${jenis} berhasil dikirim!`, 'success');
+            showAlert(`Pengajuan ${jenis} berhasil dikirim!` + (suratDokter ? ' Surat dokter akan diverifikasi HRD/Admin.' : ''), 'success');
+            fileInput.value = '';
+            document.getElementById('alasanIzin').value = '';
             renderMyStats();
         }
 
@@ -657,6 +1111,24 @@
             document.getElementById('statMyTelat').innerText = myLogs.filter(l => l.status === 'Terlambat').length;
             document.getElementById('statMyIzin').innerText = myLogs.filter(l => l.status === 'Izin').length;
             document.getElementById('statMySakit').innerText = myLogs.filter(l => l.status === 'Sakit').length;
+
+            // Status verifikasi surat dokter milik karyawan yang sedang login
+            const mySuratList = document.getElementById('mySuratStatusList');
+            const mySakitLogs = myLogs.filter(l => l.status === 'Sakit' && l.suratDokter);
+            if (mySakitLogs.length === 0) {
+                mySuratList.innerHTML = '<p class="text-slate-400 italic">Belum ada pengajuan sakit dengan surat dokter.</p>';
+            } else {
+                mySuratList.innerHTML = mySakitLogs.map(l => {
+                    let badge = '<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">Menunggu Verifikasi</span>';
+                    if (l.statusVerifikasi === 'Disetujui') badge = '<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">Disetujui</span>';
+                    if (l.statusVerifikasi === 'Ditolak') badge = '<span class="bg-red-100 text-red-800 px-2 py-0.5 rounded font-bold">Ditolak</span>';
+                    const catatan = l.catatanVerifikasi ? `<p class="text-[10px] text-slate-500 mt-0.5">Catatan: ${l.catatanVerifikasi}</p>` : '';
+                    return `<div class="p-2 border border-slate-200 rounded-lg flex justify-between items-start">
+                        <div><p class="font-semibold text-slate-700">${l.tanggal}</p>${catatan}</div>
+                        ${badge}
+                    </div>`;
+                }).join('');
+            }
         }
 
         // RENDER TABEL MONITORING TERBARU (DENGAN JAM KERJA & JAM PULANG)
@@ -675,7 +1147,12 @@
                 let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">HADIR</span>`;
                 if(log.status === 'Terlambat') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 animate-pulse">TERLAMBAT</span>`;
                 if(log.status === 'Izin') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">IZIN</span>`;
-                if(log.status === 'Sakit') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">SAKIT</span>`;
+                if(log.status === 'Sakit') {
+                    statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">SAKIT</span>`;
+                    if (log.statusVerifikasi === 'Menunggu Verifikasi') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">SURAT PENDING</span>`;
+                    else if (log.statusVerifikasi === 'Disetujui') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">SURAT OK</span>`;
+                    else if (log.statusVerifikasi === 'Ditolak') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">SURAT DITOLAK</span>`;
+                }
 
                 const masaKerja = hitungMasaKerja(log.tglMasuk);
                 const durasi = hitungDurasiKerja(log.waktuMasuk, log.waktuPulang);
@@ -699,11 +1176,113 @@
             document.getElementById('hrdStatSakit').innerText = sakit;
         }
 
+        // ================== VERIFIKASI SURAT DOKTER (HRD & ADMIN) ==================
+        let activeSuratLogId = null;
+
+        function renderVerifikasiSurat() {
+            const tbody = document.getElementById('suratTableBody');
+            tbody.innerHTML = '';
+            const suratLogs = absensiLogs.filter(l => l.status === 'Sakit' && l.suratDokter);
+
+            let pending = 0, approved = 0, rejected = 0;
+            suratLogs.forEach(l => {
+                if (l.statusVerifikasi === 'Menunggu Verifikasi') pending++;
+                else if (l.statusVerifikasi === 'Disetujui') approved++;
+                else if (l.statusVerifikasi === 'Ditolak') rejected++;
+            });
+            document.getElementById('suratStatPending').innerText = pending;
+            document.getElementById('suratStatApproved').innerText = approved;
+            document.getElementById('suratStatRejected').innerText = rejected;
+
+            if (suratLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400 italic">Belum ada surat dokter yang dikirimkan karyawan.</td></tr>`;
+            } else {
+                suratLogs.forEach(l => {
+                    let badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">MENUNGGU</span>';
+                    if (l.statusVerifikasi === 'Disetujui') badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">DISETUJUI</span>';
+                    if (l.statusVerifikasi === 'Ditolak') badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">DITOLAK</span>';
+
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-50">
+                            <td class="p-3">${l.tanggal}</td>
+                            <td class="p-3"><b>${l.nama}</b><br><span class="text-[10px] text-slate-400">${l.userId}</span></td>
+                            <td class="p-3 max-w-[180px] truncate" title="${l.lokasi}">${l.lokasi.replace('Keterangan: ', '')}</td>
+                            <td class="p-3"><i class="fa-solid fa-paperclip mr-1 text-slate-400"></i>${l.suratDokter.name}</td>
+                            <td class="p-3">${badge}</td>
+                            <td class="p-3 text-center">
+                                <button onclick="openSuratPreview(${l.id})" class="bg-slate-800 hover:bg-slate-900 text-white text-[10px] px-3 py-1.5 rounded-lg font-medium transition">
+                                    <i class="fa-solid fa-eye mr-1"></i>Periksa
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+
+            updateSuratPendingBadge();
+        }
+
+        function openSuratPreview(logId) {
+            const log = absensiLogs.find(l => l.id === logId);
+            if (!log || !log.suratDokter) return;
+            activeSuratLogId = logId;
+
+            document.getElementById('suratPreviewInfo').innerHTML = `
+                <p><b>Karyawan:</b> ${log.nama} (${log.userId})</p>
+                <p><b>Tanggal Pengajuan:</b> ${log.tanggal}</p>
+                <p><b>Keterangan:</b> ${log.lokasi.replace('Keterangan: ', '')}</p>
+                <p><b>Status Saat Ini:</b> ${log.statusVerifikasi}</p>
+            `;
+
+            const contentEl = document.getElementById('suratPreviewContent');
+            if (log.suratDokter.type && log.suratDokter.type.startsWith('image/')) {
+                contentEl.innerHTML = `<img src="${log.suratDokter.dataUrl}" class="max-w-full max-h-[50vh] object-contain">`;
+            } else if (log.suratDokter.type === 'application/pdf') {
+                contentEl.innerHTML = `<embed src="${log.suratDokter.dataUrl}" type="application/pdf" class="w-full h-[50vh]">`;
+            } else {
+                contentEl.innerHTML = `<p class="text-xs text-slate-500 p-4">Format file tidak dapat ditampilkan. Nama file: ${log.suratDokter.name}</p>`;
+            }
+
+            document.getElementById('catatanVerifikasi').value = log.catatanVerifikasi || '';
+
+            // Jika sudah diverifikasi sebelumnya, tetap izinkan ubah keputusan
+            document.getElementById('suratPreviewModal').classList.remove('hidden');
+        }
+
+        function closeSuratPreview() {
+            document.getElementById('suratPreviewModal').classList.add('hidden');
+            activeSuratLogId = null;
+        }
+
+        function verifikasiSurat(keputusan) {
+            const log = absensiLogs.find(l => l.id === activeSuratLogId);
+            if (!log) return;
+            log.statusVerifikasi = keputusan;
+            log.catatanVerifikasi = document.getElementById('catatanVerifikasi').value.trim();
+            log.verifikatorNama = currentUser ? currentUser.nama : '-';
+            saveLogsToStorage();
+            closeSuratPreview();
+            renderVerifikasiSurat();
+            showAlert(`Surat dokter dari <b>${log.nama}</b> telah <b>${keputusan}</b>.`, keputusan === 'Disetujui' ? 'success' : 'error');
+        }
+
         function renderAdminUsers() {
             const tbody = document.getElementById('adminUserTable');
             tbody.innerHTML = '';
             users.forEach(u => {
                 const mk = hitungMasaKerja(u.tglMasuk);
+                const sec = loginSecurity[getSecKey(u.username)];
+                let secBadge = '<span class="text-emerald-600 text-[10px]"><i class="fa-solid fa-shield-check mr-1"></i>Aman</span>';
+                let resetBtn = '';
+                if (sec) {
+                    if (sec.permaBanned) {
+                        secBadge = '<span class="text-red-600 font-bold text-[10px]"><i class="fa-solid fa-lock mr-1"></i>Terkunci Permanen</span>';
+                        resetBtn = `<button onclick="resetUserSecurity('${u.username}')" class="text-blue-600 hover:underline text-[11px]">Reset</button>`;
+                    } else if (sec.banUntil && sec.banUntil > Date.now()) {
+                        secBadge = '<span class="text-amber-600 font-bold text-[10px]"><i class="fa-solid fa-hourglass-half mr-1"></i>Diblokir Sementara</span>';
+                        resetBtn = `<button onclick="resetUserSecurity('${u.username}')" class="text-blue-600 hover:underline text-[11px]">Reset</button>`;
+                    }
+                }
                 tbody.innerHTML += `
                     <tr>
                         <td class="p-2 font-bold">${u.id}</td>
@@ -711,7 +1290,9 @@
                         <td class="p-2">${u.jabatan}</td>
                         <td class="p-2 text-blue-600 font-semibold">${mk}</td>
                         <td class="p-2 capitalize"><span class="bg-slate-100 px-2 py-0.5 rounded">${u.role}</span></td>
-                        <td class="p-2 text-center">
+                        <td class="p-2">${secBadge}</td>
+                        <td class="p-2 text-center space-x-2">
+                            ${resetBtn}
                             <button onclick="deleteUser('${u.id}')" class="text-red-600 hover:underline text-[11px]">Hapus</button>
                         </td>
                     </tr>
@@ -753,4 +1334,4 @@
         }
     </script>
 </body>
-</html>
+</html>OCTYPE html><html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Sistem Absensi Online - AbsensiPro v2.0</title><meta name="description" content="Sistem absensi online berbasis AI dengan face recognition, GPS, dan manajemen kehadiran lengkap."><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
