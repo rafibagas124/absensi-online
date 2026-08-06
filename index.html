@@ -500,8 +500,11 @@
                     <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI akan memindai wajah, oklusi (wajah tertutup), dan kondisi cahaya secara live sebelum absen bisa dikirim.</p>
 
                     <div class="mt-4 flex flex-wrap gap-2">
-                        <button onclick="startCamera()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
+                        <button id="btnOpenCamera" onclick="startCamera()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
                             <i class="fa-solid fa-video mr-1"></i> Buka Kamera
+                        </button>
+                        <button id="btnCloseCamera" onclick="stopCameraManual()" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
+                            <i class="fa-solid fa-video-slash mr-1"></i> Matikan Kamera
                         </button>
                         <button onclick="getGPSLocation()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
                             <i class="fa-solid fa-location-dot mr-1"></i> Ambil Lokasi
@@ -1581,6 +1584,8 @@
                     placeholder.classList.add('hidden');
                     overlay.classList.remove('hidden');
                     aiBar.classList.remove('hidden');
+                    document.getElementById('btnOpenCamera').classList.add('hidden');
+                    document.getElementById('btnCloseCamera').classList.remove('hidden');
                     loadFaceModels();
                     if (faceCheckInterval) clearInterval(faceCheckInterval);
                     faceCheckInterval = setInterval(runFaceAnalysis, 700);
@@ -1588,12 +1593,31 @@
                 .catch(err => showAlert('Gagal mengakses kamera: ' + err.message));
         }
 
+        // Matikan kamera sepenuhnya (stop track fisik) + kembalikan tampilan seperti semula, tanpa perlu refresh halaman
         function stopCamera() {
-            if(mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
+            const video = document.getElementById('webcam');
+            const placeholder = document.getElementById('cameraPlaceholder');
+            const overlay = document.getElementById('cameraOverlayInfo');
+            const aiBar = document.getElementById('aiStatusBar');
+            const btnOpen = document.getElementById('btnOpenCamera');
+            const btnClose = document.getElementById('btnCloseCamera');
+
+            if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
+            if (video) video.srcObject = null; // lepaskan referensi stream dari elemen video
             if (faceCheckInterval) { clearInterval(faceCheckInterval); faceCheckInterval = null; }
             faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
-            const aiBar = document.getElementById('aiStatusBar');
+
+            if (placeholder) placeholder.classList.remove('hidden');
+            if (overlay) overlay.classList.add('hidden');
             if (aiBar) aiBar.classList.add('hidden');
+            if (btnOpen) btnOpen.classList.remove('hidden');
+            if (btnClose) btnClose.classList.add('hidden');
+        }
+
+        // Dipanggil dari tombol "Matikan Kamera" (aksi manual oleh karyawan)
+        function stopCameraManual() {
+            stopCamera();
+            showAlert('Kamera berhasil dimatikan. Klik "Buka Kamera" lagi saat ingin absen.', 'success');
         }
 
         // Hitung tingkat kecerahan rata-rata frame kamera (0-255) untuk deteksi Light Detection
