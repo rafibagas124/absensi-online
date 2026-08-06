@@ -33,15 +33,74 @@
             opacity: 0.35; filter: blur(2px);
             clip-path: polygon(0 0, 100% 0, 100% 55%, 40% 100%, 0 70%);
             border-radius: 40% 60% 55% 45% / 50% 45% 55% 50%;
+            animation: blobFloat1 12s ease-in-out infinite;
         }
         .auth-shape::after {
             width: 320px; height: 320px; left: -110px; bottom: -110px;
             background: linear-gradient(135deg, #10b981, #0ea5e9);
             opacity: 0.25;
             border-radius: 42% 58% 60% 40% / 55% 40% 60% 45%;
+            animation: blobFloat2 14s ease-in-out infinite;
         }
-        .auth-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 34px 34px; }
-        .auth-node { position: absolute; border-radius: 9999px; background: #22d3ee; box-shadow: 0 0 12px 2px rgba(34,211,238,0.7); }
+        @keyframes blobFloat1 {
+            0%, 100% { transform: translate(0,0) rotate(0deg) scale(1); }
+            33% { transform: translate(-18px, 22px) rotate(8deg) scale(1.05); }
+            66% { transform: translate(12px, -14px) rotate(-6deg) scale(0.97); }
+        }
+        @keyframes blobFloat2 {
+            0%, 100% { transform: translate(0,0) rotate(0deg) scale(1); }
+            50% { transform: translate(20px, -18px) rotate(10deg) scale(1.08); }
+        }
+        .auth-grid {
+            position: absolute; inset: -34px;
+            background-image: linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+            background-size: 34px 34px;
+            animation: gridDrift 18s linear infinite;
+        }
+        @keyframes gridDrift {
+            0% { background-position: 0 0, 0 0; }
+            100% { background-position: 34px 34px, 34px 34px; }
+        }
+        .auth-node {
+            position: absolute; border-radius: 9999px; background: #22d3ee;
+            box-shadow: 0 0 12px 2px rgba(34,211,238,0.7);
+            animation: nodePulse 3s ease-in-out infinite;
+        }
+        @keyframes nodePulse {
+            0%, 100% { opacity: 0.5; transform: scale(1); box-shadow: 0 0 8px 1px rgba(34,211,238,0.5); }
+            50% { opacity: 1; transform: scale(1.6); box-shadow: 0 0 20px 6px rgba(34,211,238,0.9); }
+        }
+        .auth-particle {
+            position: absolute; bottom: -10px; border-radius: 9999px;
+            background: rgba(125, 211, 252, 0.8); box-shadow: 0 0 8px 2px rgba(125,211,252,0.6);
+            animation: particleRise linear infinite;
+        }
+        @keyframes particleRise {
+            0% { transform: translateY(0) translateX(0); opacity: 0; }
+            10% { opacity: 0.9; }
+            90% { opacity: 0.6; }
+            100% { transform: translateY(-620px) translateX(var(--drift, 20px)); opacity: 0; }
+        }
+        .auth-scanline {
+            position: absolute; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(34,211,238,0.9), transparent);
+            animation: scanMove 5s ease-in-out infinite;
+            filter: blur(0.5px);
+        }
+        @keyframes scanMove {
+            0%, 100% { top: 8%; opacity: 0; }
+            10% { opacity: 1; }
+            50% { top: 92%; opacity: 0.8; }
+            60% { opacity: 0; }
+        }
+        .auth-ring {
+            position: absolute; border: 1.5px solid rgba(34,211,238,0.35); border-radius: 9999px;
+            animation: ringExpand 4s ease-out infinite;
+        }
+        @keyframes ringExpand {
+            0% { transform: scale(0.4); opacity: 0.9; }
+            100% { transform: scale(1.8); opacity: 0; }
+        }
     </style>
 </head>
 <body class="bg-slate-100 font-sans text-slate-800 min-h-screen">
@@ -102,10 +161,19 @@
             </div>
             <div class="hidden lg:block lg:w-1/2 auth-shape relative overflow-hidden">
                 <div class="auth-grid"></div>
+                <div class="auth-scanline"></div>
+                <div class="auth-ring w-24 h-24" style="top:40%; left:35%;"></div>
+                <div class="auth-ring w-24 h-24" style="top:40%; left:35%; animation-delay:1.3s;"></div>
+                <div class="auth-ring w-24 h-24" style="top:40%; left:35%; animation-delay:2.6s;"></div>
                 <div class="auth-node w-2.5 h-2.5" style="top:18%; left:22%;"></div>
-                <div class="auth-node w-1.5 h-1.5" style="top:32%; left:58%;"></div>
-                <div class="auth-node w-2 h-2" style="top:60%; left:75%;"></div>
-                <div class="auth-node w-1.5 h-1.5" style="top:70%; left:30%;"></div>
+                <div class="auth-node w-1.5 h-1.5" style="top:32%; left:58%; animation-delay:0.6s;"></div>
+                <div class="auth-node w-2 h-2" style="top:60%; left:75%; animation-delay:1.2s;"></div>
+                <div class="auth-node w-1.5 h-1.5" style="top:70%; left:30%; animation-delay:1.8s;"></div>
+                <div class="auth-particle w-1 h-1" style="left:15%; --drift:14px; animation-duration:9s; animation-delay:0s;"></div>
+                <div class="auth-particle w-1.5 h-1.5" style="left:38%; --drift:-18px; animation-duration:12s; animation-delay:2s;"></div>
+                <div class="auth-particle w-1 h-1" style="left:62%; --drift:10px; animation-duration:10s; animation-delay:4s;"></div>
+                <div class="auth-particle w-1.5 h-1.5" style="left:80%; --drift:-12px; animation-duration:11s; animation-delay:1s;"></div>
+                <div class="auth-particle w-1 h-1" style="left:50%; --drift:16px; animation-duration:8s; animation-delay:3s;"></div>
                 <div class="absolute top-10 left-10 flex items-center gap-2 text-white/90">
                     <i class="fa-solid fa-face-viewfinder text-cyan-300 text-lg"></i>
                     <span class="text-xs font-semibold tracking-wide">AI Face Verification Ready</span>
@@ -251,9 +319,17 @@
             </div>
             <div class="hidden lg:block lg:w-1/2 auth-shape relative overflow-hidden">
                 <div class="auth-grid"></div>
+                <div class="auth-scanline" style="animation-delay:1.5s;"></div>
+                <div class="auth-ring w-20 h-20" style="top:55%; left:60%;"></div>
+                <div class="auth-ring w-20 h-20" style="top:55%; left:60%; animation-delay:1.3s;"></div>
+                <div class="auth-ring w-20 h-20" style="top:55%; left:60%; animation-delay:2.6s;"></div>
                 <div class="auth-node w-2 h-2" style="top:24%; left:65%;"></div>
-                <div class="auth-node w-1.5 h-1.5" style="top:45%; left:20%;"></div>
-                <div class="auth-node w-2.5 h-2.5" style="top:68%; left:55%;"></div>
+                <div class="auth-node w-1.5 h-1.5" style="top:45%; left:20%; animation-delay:0.8s;"></div>
+                <div class="auth-node w-2.5 h-2.5" style="top:68%; left:55%; animation-delay:1.6s;"></div>
+                <div class="auth-particle w-1 h-1" style="left:20%; --drift:12px; animation-duration:9s; animation-delay:1s;"></div>
+                <div class="auth-particle w-1.5 h-1.5" style="left:45%; --drift:-16px; animation-duration:11s; animation-delay:3s;"></div>
+                <div class="auth-particle w-1 h-1" style="left:70%; --drift:14px; animation-duration:10s; animation-delay:0s;"></div>
+                <div class="auth-particle w-1.5 h-1.5" style="left:88%; --drift:-10px; animation-duration:12s; animation-delay:2.5s;"></div>
                 <div class="absolute top-10 left-10 flex items-center gap-2 text-white/90">
                     <i class="fa-solid fa-shield-halved text-cyan-300 text-lg"></i>
                     <span class="text-xs font-semibold tracking-wide">Enterprise-Grade Security</span>
