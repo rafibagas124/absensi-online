@@ -12,6 +12,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <!-- Google Identity Services (OAuth resmi Google, untuk tombol "Lanjutkan dengan Google") -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- EmailJS (untuk pengiriman kode OTP verifikasi email pendaftaran, asli via Gmail) -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <style>
         @media print {
             .no-print { display: none !important; }
@@ -127,7 +129,12 @@
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
-                            <input type="password" id="loginPass" required class="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Masukkan password">
+                            <div class="relative">
+                                <input type="password" id="loginPass" required class="w-full px-3 py-2.5 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Masukkan password">
+                                <button type="button" onclick="togglePasswordVisibility('loginPass', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                    <i class="fa-solid fa-eye text-sm"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="flex justify-between items-center text-xs">
                             <label class="flex items-center text-slate-600">
@@ -194,7 +201,7 @@
                 </div>
 
                 <!-- STEPPER -->
-                <div class="flex items-center justify-between max-w-md mb-8 text-xs font-semibold">
+                <div class="flex items-center justify-between max-w-md mb-8 text-[10px] sm:text-xs font-semibold">
                     <div class="flex flex-col items-center gap-1" id="stepDot1">
                         <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">1</div>
                         <span class="text-slate-400">Pilih Bidang</span>
@@ -212,6 +219,11 @@
                     <div class="flex-1 h-0.5 bg-slate-200 mx-1"></div>
                     <div class="flex flex-col items-center gap-1" id="stepDot4">
                         <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">4</div>
+                        <span class="text-slate-400">Verifikasi OTP</span>
+                    </div>
+                    <div class="flex-1 h-0.5 bg-slate-200 mx-1"></div>
+                    <div class="flex flex-col items-center gap-1" id="stepDot5">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">5</div>
                         <span class="text-slate-400">Finish</span>
                     </div>
                 </div>
@@ -293,11 +305,21 @@
                             </div>
                             <div>
                                 <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
-                                <input type="password" id="regPassword" required minlength="4" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan password">
+                                <div class="relative">
+                                    <input type="password" id="regPassword" required minlength="4" class="w-full px-3 py-2 pr-10 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan password">
+                                    <button type="button" onclick="togglePasswordVisibility('regPassword', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                        <i class="fa-solid fa-eye text-sm"></i>
+                                    </button>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-xs font-semibold text-slate-600 mb-1">Konfirmasi Password</label>
-                                <input type="password" id="regPasswordConfirm" required minlength="4" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ulangi password">
+                                <div class="relative">
+                                    <input type="password" id="regPasswordConfirm" required minlength="4" class="w-full px-3 py-2 pr-10 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Ulangi password">
+                                    <button type="button" onclick="togglePasswordVisibility('regPasswordConfirm', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                        <i class="fa-solid fa-eye text-sm"></i>
+                                    </button>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-xs font-semibold text-slate-600 mb-1">Nomor Whatsapp</label>
@@ -309,11 +331,38 @@
                     <button type="button" onclick="goRegStep(2)" class="mt-3 text-xs text-slate-500 hover:underline">&larr; Kembali pilih paket</button>
                 </div>
 
-                <!-- STEP 4: FINISH -->
-                <div id="regStep4" class="hidden max-w-md w-full text-center py-10">
+                <!-- STEP 4: VERIFIKASI OTP EMAIL -->
+                <div id="regStep4" class="hidden max-w-md w-full">
+                    <div class="border rounded-lg">
+                        <div class="border-b p-4">
+                            <h3 class="font-bold text-slate-800">Verifikasi Email</h3>
+                            <p class="text-xs text-slate-500 mt-1">Kode OTP 6 digit telah dikirim ke <b id="otpTargetEmail">-</b>. Masukkan kode tersebut untuk melanjutkan.</p>
+                        </div>
+                        <form onsubmit="handleVerifyOtp(event)" class="p-4 space-y-4">
+                            <div id="otpDevNote" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-[11px] p-2.5 rounded-lg">
+                                <i class="fa-solid fa-circle-info mr-1"></i> Mode demo (belum ada server email): kode OTP Anda adalah <b id="otpDevCode">-</b>.
+                            </div>
+                            <div class="flex justify-between gap-2" id="otpInputGroup">
+                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <p id="otpErrorMsg" class="hidden text-xs text-red-600 font-medium"><i class="fa-solid fa-circle-exclamation mr-1"></i>Kode OTP salah atau sudah kedaluwarsa.</p>
+                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">Verifikasi & Selesaikan Pendaftaran</button>
+                            <p class="text-center text-xs text-slate-500">Tidak menerima kode? <button type="button" onclick="resendOtp()" id="btnResendOtp" class="text-blue-600 font-semibold hover:underline">Kirim ulang</button> <span id="otpResendTimer" class="text-slate-400"></span></p>
+                        </form>
+                    </div>
+                    <button type="button" onclick="goRegStep(3)" class="mt-3 text-xs text-slate-500 hover:underline">&larr; Kembali isi data akun</button>
+                </div>
+
+                <!-- STEP 5: FINISH -->
+                <div id="regStep5" class="hidden max-w-md w-full text-center py-10">
                     <i class="fa-solid fa-circle-check text-emerald-500 text-5xl mb-4"></i>
                     <h3 class="font-bold text-lg text-slate-800">Pendaftaran Berhasil!</h3>
-                    <p class="text-sm text-slate-500 mt-2">Akun perusahaan Anda sudah dibuat. Silakan cek email untuk aktivasi, lalu masuk menggunakan akun Admin baru Anda.</p>
+                    <p class="text-sm text-slate-500 mt-2">Email Anda berhasil diverifikasi dan akun perusahaan sudah aktif. Silakan masuk menggunakan akun Admin baru Anda.</p>
                     <button type="button" onclick="backToLoginFromRegister()" class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">Ke Halaman Masuk</button>
                 </div>
             </div>
@@ -795,7 +844,12 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Password Baru</label>
-                    <input type="password" id="recoverNewPassword" class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="Password baru (min 4 karakter)">
+                    <div class="relative">
+                        <input type="password" id="recoverNewPassword" class="w-full px-3 py-2 pr-10 border rounded-lg text-xs outline-none" placeholder="Password baru (min 4 karakter)">
+                        <button type="button" onclick="togglePasswordVisibility('recoverNewPassword', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <i class="fa-solid fa-eye text-sm"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="flex justify-end space-x-2 pt-2">
@@ -915,10 +969,26 @@
             setInterval(updateOverlayTime, 1000);
             setTimeout(loadFaceModels, 800); // preload model AI di background
             setTimeout(initGoogleSignIn, 500); // tunggu script Google Identity Services siap
+            setTimeout(() => { if (typeof emailjs !== 'undefined') emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY }); }, 500); // init EmailJS untuk pengiriman OTP asli
         });
 
         function saveUsersToStorage() { localStorage.setItem('absensi_users', JSON.stringify(users)); }
         function saveLogsToStorage() { localStorage.setItem('absensi_logs', JSON.stringify(absensiLogs)); }
+
+        // Toggle lihat/sembunyikan password (icon mata)
+        function togglePasswordVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            const icon = btn.querySelector('i');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
 
         function showAlert(msg, type = 'error') {
             const appVisible = !document.getElementById('appWrapper').classList.contains('hidden');
@@ -1246,6 +1316,11 @@
         }
 
         let regSelectedBidang = null;
+        let pendingRegistration = null; // Data akun sementara sebelum OTP diverifikasi
+        let pendingOtpCode = null;
+        let otpExpireAt = 0;
+        let otpResendCooldownTimer = null;
+
         function showRegisterFlow() {
             document.getElementById('loginSection').classList.add('hidden');
             document.getElementById('registerSection').classList.remove('hidden');
@@ -1255,12 +1330,16 @@
             document.getElementById('registerSection').classList.add('hidden');
             document.getElementById('loginSection').classList.remove('hidden');
             regSelectedBidang = null;
-            ['regStep1','regStep2','regStep3'].forEach(id => document.getElementById(id).classList.add('hidden'));
-            document.getElementById('regStep4').classList.add('hidden');
+            pendingRegistration = null;
+            pendingOtpCode = null;
+            ['regStep1','regStep2','regStep3','regStep4'].forEach(id => document.getElementById(id).classList.add('hidden'));
+            document.getElementById('regStep5').classList.add('hidden');
             document.getElementById('regStep1').classList.remove('hidden');
             document.getElementById('btnBidangNext').disabled = true;
             document.getElementById('btnBidangNext').className = "mt-6 w-full bg-slate-300 text-white font-semibold py-2.5 rounded-lg text-sm transition cursor-not-allowed";
             document.querySelectorAll('.bidang-opt').forEach(el => el.classList.remove('border-blue-500','bg-blue-50'));
+            document.querySelectorAll('.otp-digit').forEach(el => el.value = '');
+            if (otpResendCooldownTimer) clearInterval(otpResendCooldownTimer);
         }
         function selectBidang(nama, iconClass) {
             regSelectedBidang = nama;
@@ -1271,7 +1350,7 @@
             btn.className = "mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition";
         }
         function goRegStep(step) {
-            [1,2,3,4].forEach(n => {
+            [1,2,3,4,5].forEach(n => {
                 document.getElementById('regStep'+n).classList.toggle('hidden', n !== step);
                 const dot = document.getElementById('stepDot'+n).firstElementChild;
                 if (n < step) { dot.className = "w-8 h-8 rounded-full flex items-center justify-center bg-emerald-500 text-white"; dot.innerHTML = '<i class="fa-solid fa-check text-xs"></i>'; }
@@ -1282,6 +1361,10 @@
                 document.querySelectorAll('input[name="paket"]').forEach(r => {
                     r.onchange = () => document.getElementById('paketNamaLabel').innerText = r.value;
                 });
+            }
+            if (step === 4) {
+                const firstDigit = document.querySelector('#otpInputGroup .otp-digit');
+                if (firstDigit) setTimeout(() => firstDigit.focus(), 100);
             }
         }
         function handleRegisterSubmit(e) {
@@ -1296,7 +1379,8 @@
             const usernameTaken = users.some(u => u.username.toLowerCase() === email.toLowerCase());
             if (usernameTaken) { alert('Email ini sudah terdaftar, silakan gunakan email lain atau masuk.'); return; }
 
-            const newAdmin = {
+            // Simpan data akun sementara -> baru dibuat permanen setelah OTP email terverifikasi
+            pendingRegistration = {
                 id: "ADM-" + Date.now().toString().slice(-4),
                 nama: company + " Admin",
                 jabatan: "System Admin",
@@ -1308,10 +1392,146 @@
                 bidang: regSelectedBidang,
                 whatsapp: wa
             };
-            users.push(newAdmin);
-            saveUsersToStorage();
+
+            document.getElementById('otpTargetEmail').innerText = email;
             goRegStep(4);
+            sendOtpToEmail(email);
         }
+
+        // ================== VERIFIKASI OTP EMAIL (STEP 4 REGISTRASI) — ASLI VIA EMAILJS ==================
+        // Kredensial EmailJS disamarkan (base64, dipecah) sebagai lapisan tambahan agar tidak langsung terbaca
+        // sebagai teks polos di source code. CATATAN PENTING: ini BUKAN pengaman utama — key EmailJS memang
+        // publik by design. Perlindungan sesungguhnya ada di dashboard EmailJS > Account > Security > Allowed
+        // Origins, dengan mendaftarkan HANYA domain resmi (mis. namamu.vercel.app) yang boleh memakai key ini.
+        const _ej = {
+            a: ['c2Vy', 'dmljZV93', 'cnhmeHFp'],
+            b: ['dGVt', 'cGxhdGVfazQx', 'NmF6OQ=='],
+            c: ['cUxN', 'd0xmZHNla2xF', 'TlhoeXI=']
+        };
+        function _decodeKey(parts) { return atob(parts.join('')); }
+        const EMAILJS_SERVICE_ID = _decodeKey(_ej.a);
+        const EMAILJS_TEMPLATE_ID = _decodeKey(_ej.b);
+        const EMAILJS_PUBLIC_KEY = _decodeKey(_ej.c);
+
+        function generateOtpCode() {
+            return String(Math.floor(100000 + Math.random() * 900000));
+        }
+
+        function sendOtpToEmail(email) {
+            pendingOtpCode = generateOtpCode();
+            otpExpireAt = Date.now() + (5 * 60 * 1000); // berlaku 5 menit
+            document.getElementById('otpErrorMsg').classList.add('hidden');
+            document.querySelectorAll('.otp-digit').forEach(el => el.value = '');
+
+            const devNote = document.getElementById('otpDevNote');
+            const devCode = document.getElementById('otpDevCode');
+            const sendBtn = document.querySelector('#regStep4 button[type="submit"]');
+
+            const waktuKedaluwarsa = new Date(otpExpireAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+            if (typeof emailjs === 'undefined') {
+                // Fallback kalau SDK EmailJS gagal dimuat (mis. tidak ada internet) -> tampilkan mode demo agar tetap bisa diuji
+                devNote.classList.remove('hidden');
+                devCode.innerText = pendingOtpCode;
+                showAlert('Layanan pengirim email tidak dapat dimuat. Menampilkan kode OTP sementara di layar (mode cadangan).');
+                startOtpResendCooldown();
+                return;
+            }
+
+            devNote.classList.add('hidden');
+            if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = 'Mengirim OTP...'; }
+
+            emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                email: email,
+                passcode: pendingOtpCode,
+                time: waktuKedaluwarsa
+            }, EMAILJS_PUBLIC_KEY)
+            .then(() => {
+                showAlert(`Kode OTP telah dikirim ke <b>${email}</b>. Cek inbox (atau folder spam) email Anda. Berlaku hingga <b>${waktuKedaluwarsa}</b>.`, 'success');
+                startOtpResendCooldown();
+            })
+            .catch((err) => {
+                console.error('Gagal mengirim OTP via EmailJS:', err);
+                // Fallback: tampilkan kode di layar supaya pendaftaran tetap bisa dilanjutkan meski pengiriman email gagal
+                devNote.classList.remove('hidden');
+                devCode.innerText = pendingOtpCode;
+                showAlert('Gagal mengirim email OTP (periksa koneksi/konfigurasi EmailJS). Kode OTP sementara ditampilkan di layar agar Anda tetap bisa lanjut.');
+                startOtpResendCooldown();
+            })
+            .finally(() => {
+                if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = 'Verifikasi & Selesaikan Pendaftaran'; }
+            });
+        }
+
+        function resendOtp() {
+            if (!pendingRegistration) return;
+            sendOtpToEmail(pendingRegistration.username);
+        }
+
+        function startOtpResendCooldown() {
+            let sisa = 30;
+            const btn = document.getElementById('btnResendOtp');
+            const timerLabel = document.getElementById('otpResendTimer');
+            btn.classList.add('pointer-events-none', 'opacity-40');
+            if (otpResendCooldownTimer) clearInterval(otpResendCooldownTimer);
+            timerLabel.innerText = `(${sisa}s)`;
+            otpResendCooldownTimer = setInterval(() => {
+                sisa--;
+                if (sisa <= 0) {
+                    clearInterval(otpResendCooldownTimer);
+                    btn.classList.remove('pointer-events-none', 'opacity-40');
+                    timerLabel.innerText = '';
+                } else {
+                    timerLabel.innerText = `(${sisa}s)`;
+                }
+            }, 1000);
+        }
+
+        function handleVerifyOtp(e) {
+            e.preventDefault();
+            const digits = Array.from(document.querySelectorAll('#otpInputGroup .otp-digit')).map(el => el.value.trim());
+            const inputCode = digits.join('');
+            const errEl = document.getElementById('otpErrorMsg');
+
+            if (inputCode.length < 6) {
+                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Mohon isi seluruh 6 digit kode OTP.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+            if (Date.now() > otpExpireAt) {
+                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Kode OTP sudah kedaluwarsa. Silakan kirim ulang.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+            if (inputCode !== pendingOtpCode) {
+                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Kode OTP salah. Periksa kembali email Anda.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            // OTP valid -> akun perusahaan baru resmi dibuat
+            users.push(pendingRegistration);
+            saveUsersToStorage();
+            pendingRegistration = null;
+            pendingOtpCode = null;
+            if (otpResendCooldownTimer) clearInterval(otpResendCooldownTimer);
+            goRegStep(5);
+        }
+
+        // Navigasi otomatis antar kotak OTP (ketik maju, backspace mundur)
+        document.addEventListener('input', (e) => {
+            if (!e.target.classList.contains('otp-digit')) return;
+            e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 1);
+            if (e.target.value && e.target.nextElementSibling && e.target.nextElementSibling.classList.contains('otp-digit')) {
+                e.target.nextElementSibling.focus();
+            }
+        });
+        document.addEventListener('keydown', (e) => {
+            if (!e.target.classList.contains('otp-digit')) return;
+            if (e.key === 'Backspace' && !e.target.value && e.target.previousElementSibling && e.target.previousElementSibling.classList.contains('otp-digit')) {
+                e.target.previousElementSibling.focus();
+            }
+        });
 
         // ================== AI FACE RECOGNITION (face-api.js) ==================
         // Model dimuat dari CDN: TinyFaceDetector (deteksi wajah) + FaceLandmark68Tiny (titik wajah, untuk cek oklusi)
