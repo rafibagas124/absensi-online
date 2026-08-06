@@ -514,6 +514,9 @@
                         <button onclick="getGPSLocation()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
                             <i class="fa-solid fa-location-dot mr-1"></i> Ambil Lokasi
                         </button>
+                        <button type="button" id="btnToggleManualGPS" onclick="toggleManualGPS()" class="bg-slate-600 hover:bg-slate-700 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
+                            <i class="fa-solid fa-keyboard mr-1"></i> Input Manual
+                        </button>
                         
                         <!-- TOMBOL ABSEN MASUK & PULANG -->
                         <div class="ml-auto flex gap-2">
@@ -526,9 +529,31 @@
                         </div>
                     </div>
 
+                    <!-- FORM INPUT KOORDINAT GPS MANUAL (fallback jika GPS otomatis gagal/lemah) -->
+                    <div id="manualGPSForm" class="hidden mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs space-y-2">
+                        <p class="font-semibold text-indigo-700"><i class="fa-solid fa-keyboard mr-1"></i> Input Koordinat GPS Manual</p>
+                        <p class="text-slate-500">Gunakan opsi ini jika GPS otomatis tidak berfungsi atau sinyal lemah. Jarak ke kantor tetap dihitung &amp; divalidasi seperti biasa, sehingga koordinat yang jauh dari kantor akan tetap terdeteksi dan ditolak.</p>
+                        <div class="flex flex-wrap gap-2 items-end">
+                            <div>
+                                <label class="block text-slate-600 mb-0.5">Latitude</label>
+                                <input type="number" step="any" id="manualLat" placeholder="-6.914744" class="border border-slate-300 rounded-lg px-2 py-1.5 w-32 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                            </div>
+                            <div>
+                                <label class="block text-slate-600 mb-0.5">Longitude</label>
+                                <input type="number" step="any" id="manualLng" placeholder="107.609810" class="border border-slate-300 rounded-lg px-2 py-1.5 w-32 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                            </div>
+                            <button type="button" onclick="submitManualGPS()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-medium transition">
+                                <i class="fa-solid fa-check mr-1"></i> Gunakan Koordinat Ini
+                            </button>
+                            <button type="button" onclick="toggleManualGPS(false)" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-lg font-medium transition">
+                                Batal
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1">
                         <p class="font-semibold text-slate-700"><i class="fa-solid fa-map-pin text-red-500 mr-1"></i> Alamat Real-Time (GPS):</p>
-                        <p id="gpsAddress" class="text-slate-600 italic">Klik tombol "Ambil Lokasi" untuk mendapatkan koordinat GPS Anda.</p>
+                        <p id="gpsAddress" class="text-slate-600 italic">Klik tombol "Ambil Lokasi" untuk mendapatkan koordinat GPS Anda, atau gunakan "Input Manual".</p>
                     </div>
                 </div>
 

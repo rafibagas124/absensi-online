@@ -864,29 +864,39 @@
             if(el) { el.innerHTML = `<i class="fa-solid fa-clock mr-1"></i>${new Date().toLocaleTimeString('id-ID')}`; }
         }
 
+        // Menerapkan hasil koordinat (baik dari GPS otomatis maupun input manual) ke state
+        // absen & tampilan, termasuk perhitungan jarak/validasi radius kantor (geofencing).
+        // Dipusatkan di satu fungsi supaya perilaku GPS otomatis dan manual selalu konsisten.
+        function applyGPSResult(lat, lng, isManual) {
+            const addrEl = document.getElementById('gpsAddress');
+            currentLat = lat;
+            currentLng = lng;
+            const coordText = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}` + (isManual ? ' (input manual)' : '');
+
+            if (officeLocation) {
+                currentGPSDistance = Math.round(hitungJarakMeter(lat, lng, officeLocation.lat, officeLocation.lng));
+                currentGPSValid = currentGPSDistance <= officeLocation.radius;
+                currentGPS = `${coordText} (${currentGPSDistance}m dari kantor)`;
+                if (addrEl) {
+                    addrEl.innerHTML = currentGPS + (currentGPSValid
+                        ? ' <span class="text-emerald-600 font-semibold"><i class="fa-solid fa-circle-check mr-0.5"></i>Dalam radius kantor</span>'
+                        : ' <span class="text-red-600 font-bold"><i class="fa-solid fa-triangle-exclamation mr-0.5"></i>Di luar radius kantor</span>');
+                }
+            } else {
+                currentGPSValid = null;
+                currentGPSDistance = null;
+                currentGPS = coordText;
+                if (addrEl) addrEl.innerHTML = currentGPS + ' <span class="text-slate-400">(lokasi kantor belum diatur Admin)</span>';
+            }
+        }
+
         function getGPSLocation() {
             const addrEl = document.getElementById('gpsAddress');
             if(!navigator.geolocation) return addrEl.innerText = "Geolocation tidak didukung.";
             addrEl.innerText = "Mendeteksi lokasi GPS...";
             navigator.geolocation.getCurrentPosition(
                 pos => {
-                    currentLat = pos.coords.latitude;
-                    currentLng = pos.coords.longitude;
-                    const coordText = `Lat: ${currentLat.toFixed(5)}, Lng: ${currentLng.toFixed(5)}`;
-
-                    if (officeLocation) {
-                        currentGPSDistance = Math.round(hitungJarakMeter(currentLat, currentLng, officeLocation.lat, officeLocation.lng));
-                        currentGPSValid = currentGPSDistance <= officeLocation.radius;
-                        currentGPS = `${coordText} (${currentGPSDistance}m dari kantor)`;
-                        addrEl.innerHTML = currentGPS + (currentGPSValid
-                            ? ' <span class="text-emerald-600 font-semibold"><i class="fa-solid fa-circle-check mr-0.5"></i>Dalam radius kantor</span>'
-                            : ' <span class="text-red-600 font-bold"><i class="fa-solid fa-triangle-exclamation mr-0.5"></i>Di luar radius kantor</span>');
-                    } else {
-                        currentGPSValid = null;
-                        currentGPSDistance = null;
-                        currentGPS = coordText;
-                        addrEl.innerHTML = currentGPS + ' <span class="text-slate-400">(lokasi kantor belum diatur Admin)</span>';
-                    }
+                    applyGPSResult(pos.coords.latitude, pos.coords.longitude, false);
                 },
                 err => {
                     currentLat = null;
@@ -894,9 +904,42 @@
                     currentGPSValid = false;
                     currentGPSDistance = null;
                     currentGPS = "Lokasi GPS tidak tersedia";
-                    addrEl.innerText = currentGPS + " [Izin Lokasi Ditolak]";
+                    addrEl.innerText = currentGPS + " [Izin Lokasi Ditolak] — Anda tetap bisa memakai tombol \"Input Manual\" untuk memasukkan koordinat secara manual.";
                 }
             );
+        }
+
+        // ================== INPUT KOORDINAT GPS MANUAL ==================
+        // Fallback untuk karyawan jika GPS otomatis gagal/lemah sinyal. Koordinat yang
+        // dimasukkan tetap divalidasi memakai rumus jarak (Haversine) yang sama seperti
+        // GPS otomatis, sehingga koordinat yang jauh dari kantor tetap akan terdeteksi
+        // dan ditolak oleh gating di submitAbsen().
+        function toggleManualGPS(forceState) {
+            const form = document.getElementById('manualGPSForm');
+            if (!form) return;
+            const shouldShow = typeof forceState === 'boolean' ? forceState : form.classList.contains('hidden');
+            form.classList.toggle('hidden', !shouldShow);
+        }
+
+        function submitManualGPS() {
+            const latInput = document.getElementById('manualLat');
+            const lngInput = document.getElementById('manualLng');
+            if (!latInput || !lngInput) return;
+
+            const lat = parseFloat(latInput.value);
+            const lng = parseFloat(lngInput.value);
+
+            if (isNaN(lat) || lat < -90 || lat > 90) return showAlert('Latitude tidak valid (harus berupa angka antara -90 sampai 90).');
+            if (isNaN(lng) || lng < -180 || lng > 180) return showAlert('Longitude tidak valid (harus berupa angka antara -180 sampai 180).');
+
+            applyGPSResult(lat, lng, true);
+            toggleManualGPS(false);
+
+            if (officeLocation && currentGPSValid === false) {
+                showAlert(`Koordinat manual diterapkan, tapi jaraknya sekitar <b>${currentGPSDistance} meter</b> dari kantor (di luar radius ${officeLocation.radius} meter). Absen akan ditolak sampai koordinat berada dalam radius kantor.`);
+            } else {
+                showAlert('Koordinat GPS manual berhasil diterapkan.', 'success');
+            }
         }
 
         // LOGIKA ABSEN MASUK & PULANG (LENGKAP DENGAN ANTI-CHEAT)
