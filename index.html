@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Face Recognition AI Engine (face-api.js) -->
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <!-- Google Identity Services (OAuth resmi Google, untuk tombol "Lanjutkan dengan Google") -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         @media print {
             .no-print { display: none !important; }
@@ -20,7 +22,26 @@
         .print-only { display: none; }
         .sidebar-link.active { background: rgba(255,255,255,0.12); color: #fff; border-left: 3px solid #3b82f6; }
         .sidebar-link { border-left: 3px solid transparent; }
-        .auth-shape { background: radial-gradient(circle at 15% 15%, #fbbf24 0%, #fbbf24 12%, transparent 13%), linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #0ea5e9 75%, #22d3ee 100%); }
+        .auth-shape {
+            background: linear-gradient(160deg, #061426 0%, #0b2545 35%, #0f3d63 65%, #0e7490 100%);
+            position: relative;
+        }
+        .auth-shape::before, .auth-shape::after { content: ''; position: absolute; border-radius: 9999px; }
+        .auth-shape::before {
+            width: 480px; height: 480px; right: -160px; top: -140px;
+            background: conic-gradient(from 200deg, #22d3ee, #0ea5e9 35%, #6366f1 65%, #22d3ee);
+            opacity: 0.35; filter: blur(2px);
+            clip-path: polygon(0 0, 100% 0, 100% 55%, 40% 100%, 0 70%);
+            border-radius: 40% 60% 55% 45% / 50% 45% 55% 50%;
+        }
+        .auth-shape::after {
+            width: 320px; height: 320px; left: -110px; bottom: -110px;
+            background: linear-gradient(135deg, #10b981, #0ea5e9);
+            opacity: 0.25;
+            border-radius: 42% 58% 60% 40% / 55% 40% 60% 45%;
+        }
+        .auth-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 34px 34px; }
+        .auth-node { position: absolute; border-radius: 9999px; background: #22d3ee; box-shadow: 0 0 12px 2px rgba(34,211,238,0.7); }
     </style>
 </head>
 <body class="bg-slate-100 font-sans text-slate-800 min-h-screen">
@@ -65,9 +86,10 @@
                         <span class="text-[10px] text-slate-400 uppercase">atau</span>
                         <div class="h-px bg-slate-200 flex-1"></div>
                     </div>
-                    <button type="button" class="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
+                    <button type="button" id="btnGoogleLogin" onclick="handleGoogleLoginClick()" class="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium py-2.5 rounded-lg text-sm flex items-center justify-center gap-2">
                         <i class="fa-brands fa-google text-red-500"></i> Lanjutkan dengan Google
                     </button>
+                    <div id="googleBtnRealContainer" class="hidden mt-2"></div>
                     <p class="text-center text-xs text-slate-500 mt-4">Belum punya akun? <button type="button" onclick="showRegisterFlow()" class="text-blue-600 font-semibold hover:underline">Daftar disini</button></p>
 
                     <div class="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
@@ -79,8 +101,17 @@
                 </div>
             </div>
             <div class="hidden lg:block lg:w-1/2 auth-shape relative overflow-hidden">
+                <div class="auth-grid"></div>
+                <div class="auth-node w-2.5 h-2.5" style="top:18%; left:22%;"></div>
+                <div class="auth-node w-1.5 h-1.5" style="top:32%; left:58%;"></div>
+                <div class="auth-node w-2 h-2" style="top:60%; left:75%;"></div>
+                <div class="auth-node w-1.5 h-1.5" style="top:70%; left:30%;"></div>
+                <div class="absolute top-10 left-10 flex items-center gap-2 text-white/90">
+                    <i class="fa-solid fa-face-viewfinder text-cyan-300 text-lg"></i>
+                    <span class="text-xs font-semibold tracking-wide">AI Face Verification Ready</span>
+                </div>
                 <div class="absolute bottom-10 left-10 right-10 text-white/90">
-                    <p class="text-xs uppercase tracking-widest font-semibold">AbsensiPro</p>
+                    <p class="text-xs uppercase tracking-widest font-semibold text-cyan-300">AbsensiPro</p>
                     <p class="text-lg font-bold mt-1">Presensi wajah AI, GPS, & manajemen shift dalam satu sistem.</p>
                 </div>
             </div>
@@ -219,8 +250,16 @@
                 </div>
             </div>
             <div class="hidden lg:block lg:w-1/2 auth-shape relative overflow-hidden">
+                <div class="auth-grid"></div>
+                <div class="auth-node w-2 h-2" style="top:24%; left:65%;"></div>
+                <div class="auth-node w-1.5 h-1.5" style="top:45%; left:20%;"></div>
+                <div class="auth-node w-2.5 h-2.5" style="top:68%; left:55%;"></div>
+                <div class="absolute top-10 left-10 flex items-center gap-2 text-white/90">
+                    <i class="fa-solid fa-shield-halved text-cyan-300 text-lg"></i>
+                    <span class="text-xs font-semibold tracking-wide">Enterprise-Grade Security</span>
+                </div>
                 <div class="absolute bottom-10 left-10 right-10 text-white/90">
-                    <p class="text-xs uppercase tracking-widest font-semibold">AbsensiPro</p>
+                    <p class="text-xs uppercase tracking-widest font-semibold text-cyan-300">AbsensiPro</p>
                     <p class="text-lg font-bold mt-1">Mulai kelola kehadiran timmu dalam hitungan menit.</p>
                 </div>
             </div>
@@ -799,6 +838,7 @@
             checkSession();
             setInterval(updateOverlayTime, 1000);
             setTimeout(loadFaceModels, 800); // preload model AI di background
+            setTimeout(initGoogleSignIn, 500); // tunggu script Google Identity Services siap
         });
 
         function saveUsersToStorage() { localStorage.setItem('absensi_users', JSON.stringify(users)); }
@@ -1068,6 +1108,67 @@
         }
 
         // ================== FLOW REGISTRASI (LANDING PAGE ONBOARDING) ==================
+        // ================== GOOGLE SIGN-IN ASLI (Google Identity Services) ==================
+        // PENTING: Ganti nilai di bawah dengan Client ID milik Anda dari https://console.cloud.google.com/apis/credentials
+        // Client ID hanya aktif untuk domain yang sudah didaftarkan di "Authorized JavaScript origins".
+        const GOOGLE_CLIENT_ID = "GANTI_DENGAN_CLIENT_ID_ANDA.apps.googleusercontent.com";
+
+        function handleGoogleLoginClick() {
+            if (GOOGLE_CLIENT_ID.startsWith('GANTI_DENGAN')) {
+                showAlert('<b>Login Google belum dikonfigurasi.</b> Admin perlu memasang Google Client ID (lihat komentar GOOGLE_CLIENT_ID di kode) agar tombol ini aktif.');
+                return;
+            }
+            if (typeof google === 'undefined' || !google.accounts) {
+                showAlert('Layanan Google sedang tidak dapat dimuat. Periksa koneksi internet Anda dan coba lagi.');
+                return;
+            }
+            google.accounts.id.prompt(); // Munculkan One Tap / popup akun Google resmi
+        }
+
+        function initGoogleSignIn() {
+            if (GOOGLE_CLIENT_ID.startsWith('GANTI_DENGAN')) return;
+            if (typeof google === 'undefined' || !google.accounts) return;
+            google.accounts.id.initialize({
+                client_id: GOOGLE_CLIENT_ID,
+                callback: handleGoogleCredentialResponse
+            });
+        }
+
+        // Dipanggil Google setelah user berhasil login & memberi izin (menerima JWT ID Token asli dari Google)
+        function handleGoogleCredentialResponse(response) {
+            try {
+                const payload = JSON.parse(atob(response.credential.split('.')[1])); // decode JWT payload (email, nama, dsb)
+                const email = payload.email;
+                const nama = payload.name || email;
+
+                let found = users.find(u => u.username.toLowerCase() === email.toLowerCase());
+                if (!found) {
+                    // Akun Google belum terdaftar di sistem -> buat akun karyawan baru otomatis
+                    found = {
+                        id: "GGL-" + Date.now().toString().slice(-6),
+                        nama: nama,
+                        jabatan: "Karyawan Baru",
+                        tglMasuk: new Date().toISOString().split('T')[0],
+                        username: email,
+                        pass: null, // Login via Google, tanpa password lokal
+                        role: "karyawan",
+                        shift: "pagi",
+                        viaGoogle: true
+                    };
+                    users.push(found);
+                    saveUsersToStorage();
+                }
+
+                currentUser = found;
+                sessionStorage.setItem('absensi_session', JSON.stringify(currentUser));
+                showAlert(`Berhasil masuk dengan Google sebagai <b>${currentUser.nama}</b>!`, 'success');
+                checkSession();
+            } catch (err) {
+                console.error('Gagal memproses login Google:', err);
+                showAlert('Gagal memproses data akun Google. Silakan coba lagi.');
+            }
+        }
+
         let regSelectedBidang = null;
         function showRegisterFlow() {
             document.getElementById('loginSection').classList.add('hidden');
