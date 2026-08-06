@@ -19,6 +19,30 @@
         let absensiLogs = JSON.parse(localStorage.getItem('absensi_logs')) || [];
         let currentUser = JSON.parse(sessionStorage.getItem('absensi_session')) || null;
         let currentGPS = "Lokasi belum didapatkan";
+        let currentLat = null;
+        let currentLng = null;
+        let currentGPSValid = null; // true = dalam radius, false = di luar radius, null = belum ada acuan/lokasi
+        let currentGPSDistance = null;
+
+        // ================== LOKASI KANTOR (GEOFENCING) ==================
+        // Disimpan oleh Admin lewat panel "Lokasi Kantor". Selama belum diatur
+        // (null), validasi jarak GPS saat absen TIDAK diaktifkan (backward
+        // compatible dengan perilaku sebelumnya).
+        let officeLocation = JSON.parse(localStorage.getItem('absensi_office_location')) || null;
+        function saveOfficeLocationToStorage() {
+            localStorage.setItem('absensi_office_location', JSON.stringify(officeLocation));
+        }
+
+        // Rumus Haversine: menghitung jarak (meter) antara dua titik koordinat GPS
+        function hitungJarakMeter(lat1, lng1, lat2, lng2) {
+            const R = 6371000; // radius bumi (meter)
+            const toRad = (d) => d * Math.PI / 180;
+            const dLat = toRad(lat2 - lat1);
+            const dLng = toRad(lng2 - lng1);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
 
         // ================== KEAMANAN LOGIN (ANTI BRUTE-FORCE) ==================
         // Struktur per-username: { failCount, banUntil, banStage, permaBanned }
@@ -252,21 +276,25 @@
             const hrdSec = document.getElementById('hrdSection');
             const admSec = document.getElementById('adminSection');
             const shiftSec = document.getElementById('shiftMasterSection');
+            const lokasiSec = document.getElementById('lokasiKantorSection');
 
             const btnPanel = document.getElementById('btnTabPanel');
             const btnVerif = document.getElementById('btnTabVerifikasi');
             const btnShiftMaster = document.getElementById('btnTabShiftMaster');
             const btnUsers = document.getElementById('btnTabUsers');
+            const btnLokasi = document.getElementById('btnTabLokasi');
             const masterLabel = document.getElementById('masterDataLabel');
 
             karySec.classList.add('hidden');
             hrdSec.classList.add('hidden');
             admSec.classList.add('hidden');
             shiftSec.classList.add('hidden');
+            lokasiSec.classList.add('hidden');
             btnPanel.classList.add('hidden');
             btnVerif.classList.add('hidden');
             btnShiftMaster.classList.add('hidden');
             btnUsers.classList.add('hidden');
+            btnLokasi.classList.add('hidden');
             masterLabel.classList.add('hidden');
 
             if(!currentUser) {
@@ -293,6 +321,7 @@
                 btnVerif.classList.remove('hidden');
                 btnShiftMaster.classList.remove('hidden');
                 btnUsers.classList.remove('hidden');
+                btnLokasi.classList.remove('hidden');
                 masterLabel.classList.remove('hidden');
                 document.getElementById('lblTabPanelIcon').className = "fa-solid fa-users-gear w-4";
                 document.getElementById('lblTabPanelText').innerText = "Kelola User & Admin";
@@ -335,13 +364,15 @@
             const admSec = document.getElementById('adminSection');
             const verSec = document.getElementById('verifikasiSection');
             const shiftSec = document.getElementById('shiftMasterSection');
-            const allBtns = ['btnTabAbsen','btnTabPanel','btnTabVerifikasi','btnTabShiftMaster','btnTabUsers'].map(id => document.getElementById(id));
+            const lokasiSec = document.getElementById('lokasiKantorSection');
+            const allBtns = ['btnTabAbsen','btnTabPanel','btnTabVerifikasi','btnTabShiftMaster','btnTabUsers','btnTabLokasi'].map(id => document.getElementById(id));
 
             karySec.classList.add('hidden');
             hrdSec.classList.add('hidden');
             admSec.classList.add('hidden');
             verSec.classList.add('hidden');
             shiftSec.classList.add('hidden');
+            lokasiSec.classList.add('hidden');
             allBtns.forEach(b => b.classList.remove('active'));
 
             if (tab === 'absen') {
@@ -360,6 +391,10 @@
                 admSec.classList.remove('hidden');
                 document.getElementById('btnTabUsers').classList.add('active');
                 renderAdminUsers();
+            } else if (tab === 'lokasikantor') {
+                lokasiSec.classList.remove('hidden');
+                document.getElementById('btnTabLokasi').classList.add('active');
+                renderLokasiKantorForm();
             } else {
                 document.getElementById('btnTabPanel').classList.add('active');
                 if (currentUser.role === 'hrd') {
@@ -835,11 +870,30 @@
             addrEl.innerText = "Mendeteksi lokasi GPS...";
             navigator.geolocation.getCurrentPosition(
                 pos => {
-                    currentGPS = `Lat: ${pos.coords.latitude.toFixed(5)}, Lng: ${pos.coords.longitude.toFixed(5)} (Margonda, Depok)`;
-                    addrEl.innerText = currentGPS;
+                    currentLat = pos.coords.latitude;
+                    currentLng = pos.coords.longitude;
+                    const coordText = `Lat: ${currentLat.toFixed(5)}, Lng: ${currentLng.toFixed(5)}`;
+
+                    if (officeLocation) {
+                        currentGPSDistance = Math.round(hitungJarakMeter(currentLat, currentLng, officeLocation.lat, officeLocation.lng));
+                        currentGPSValid = currentGPSDistance <= officeLocation.radius;
+                        currentGPS = `${coordText} (${currentGPSDistance}m dari kantor)`;
+                        addrEl.innerHTML = currentGPS + (currentGPSValid
+                            ? ' <span class="text-emerald-600 font-semibold"><i class="fa-solid fa-circle-check mr-0.5"></i>Dalam radius kantor</span>'
+                            : ' <span class="text-red-600 font-bold"><i class="fa-solid fa-triangle-exclamation mr-0.5"></i>Di luar radius kantor</span>');
+                    } else {
+                        currentGPSValid = null;
+                        currentGPSDistance = null;
+                        currentGPS = coordText;
+                        addrEl.innerHTML = currentGPS + ' <span class="text-slate-400">(lokasi kantor belum diatur Admin)</span>';
+                    }
                 },
                 err => {
-                    currentGPS = "Depok, Jawa Barat (Estimasi GPS)";
+                    currentLat = null;
+                    currentLng = null;
+                    currentGPSValid = false;
+                    currentGPSDistance = null;
+                    currentGPS = "Lokasi GPS tidak tersedia";
                     addrEl.innerText = currentGPS + " [Izin Lokasi Ditolak]";
                 }
             );
@@ -864,6 +918,18 @@
             }
             if (!faceState.wellLit) {
                 return showAlert('<b>Pencahayaan kurang mendukung!</b> Sesuaikan pencahayaan ruangan (jangan terlalu gelap/terlalu terang) lalu coba lagi.');
+            }
+
+            // ================== GATING LOKASI GPS (GEOFENCING KANTOR) ==================
+            // Hanya aktif kalau Admin sudah mengatur lokasi kantor. Kalau belum
+            // diatur, perilaku lama tetap berlaku (tidak ada validasi jarak).
+            if (officeLocation) {
+                if (currentLat === null || currentLng === null) {
+                    return showAlert('<b>Lokasi GPS belum terdeteksi!</b> Klik tombol ambil lokasi / izinkan akses lokasi terlebih dahulu.');
+                }
+                if (currentGPSValid === false) {
+                    return showAlert(`<b>Di luar area kantor!</b> Jarak Anda saat ini sekitar <b>${currentGPSDistance} meter</b> dari kantor (maksimal ${officeLocation.radius} meter). Absen hanya bisa dilakukan di sekitar lokasi kantor.`);
+                }
             }
 
             const now = new Date();
@@ -1168,6 +1234,70 @@
             closeSuratPreview();
             renderVerifikasiSurat();
             showAlert(`Surat dokter dari <b>${log.nama}</b> telah <b>${keputusan}</b>.`, keputusan === 'Disetujui' ? 'success' : 'error');
+        }
+
+        // ================== PENGATURAN LOKASI KANTOR (ADMIN, GEOFENCING) ==================
+        function renderLokasiKantorForm() {
+            const latEl = document.getElementById('kantorLat');
+            const lngEl = document.getElementById('kantorLng');
+            const radiusEl = document.getElementById('kantorRadius');
+            const statusEl = document.getElementById('kantorStatusInfo');
+            if (!latEl || !lngEl || !radiusEl || !statusEl) return;
+
+            if (officeLocation) {
+                latEl.value = officeLocation.lat;
+                lngEl.value = officeLocation.lng;
+                radiusEl.value = officeLocation.radius;
+                statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Lokasi kantor aktif: <b>${officeLocation.lat.toFixed(5)}, ${officeLocation.lng.toFixed(5)}</b> &mdash; radius <b>${officeLocation.radius} meter</b>. Karyawan di luar radius ini akan ditolak saat mencoba absen.`;
+            } else {
+                latEl.value = '';
+                lngEl.value = '';
+                radiusEl.value = 100;
+                statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-600 mr-1"></i>Lokasi kantor <b>belum diatur</b>. Selama belum diatur, validasi jarak GPS saat absen tidak aktif (karyawan bisa absen dari mana saja).`;
+            }
+        }
+
+        // Bantu Admin mengisi form: ambil koordinat GPS Admin saat ini (dipakai saat Admin sedang berada di kantor)
+        function ambilLokasiSaatIniUntukKantor() {
+            if (!navigator.geolocation) return showAlert('Geolocation tidak didukung browser ini.');
+            const btn = document.getElementById('btnAmbilLokasiKantor');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Mendeteksi...'; }
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    document.getElementById('kantorLat').value = pos.coords.latitude.toFixed(6);
+                    document.getElementById('kantorLng').value = pos.coords.longitude.toFixed(6);
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-location-crosshairs mr-1"></i>Ambil Lokasi Saat Ini'; }
+                    showAlert('Koordinat lokasi Anda saat ini berhasil diambil. Pastikan Anda sedang benar-benar berada di lokasi kantor, lalu klik "Simpan Lokasi Kantor".', 'success');
+                },
+                err => {
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-location-crosshairs mr-1"></i>Ambil Lokasi Saat Ini'; }
+                    showAlert('Gagal mengambil lokasi GPS. Pastikan izin lokasi browser sudah diizinkan.', 'error');
+                }
+            );
+        }
+
+        function saveLokasiKantor(e) {
+            e.preventDefault();
+            const lat = parseFloat(document.getElementById('kantorLat').value);
+            const lng = parseFloat(document.getElementById('kantorLng').value);
+            const radius = parseInt(document.getElementById('kantorRadius').value, 10);
+
+            if (isNaN(lat) || lat < -90 || lat > 90) return showAlert('Latitude tidak valid (harus di antara -90 sampai 90).');
+            if (isNaN(lng) || lng < -180 || lng > 180) return showAlert('Longitude tidak valid (harus di antara -180 sampai 180).');
+            if (isNaN(radius) || radius < 10) return showAlert('Radius toleransi minimal 10 meter.');
+
+            officeLocation = { lat, lng, radius };
+            saveOfficeLocationToStorage();
+            renderLokasiKantorForm();
+            showAlert(`Lokasi kantor berhasil disimpan (radius ${radius} meter). Validasi jarak GPS saat absen sekarang aktif untuk seluruh karyawan.`, 'success');
+        }
+
+        function hapusLokasiKantor() {
+            if (!officeLocation) return;
+            officeLocation = null;
+            saveOfficeLocationToStorage();
+            renderLokasiKantorForm();
+            showAlert('Lokasi kantor dihapus. Validasi jarak GPS saat absen dinonaktifkan sementara.', 'success');
         }
 
         // ================== MASTER DATA: TABEL JAM KERJA / SHIFT ==================
