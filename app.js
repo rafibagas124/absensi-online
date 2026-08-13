@@ -5,21 +5,37 @@
 
         // DATABASE LOKAL
         let users = JSON.parse(localStorage.getItem('absensi_users')) || [
-            { id: "EMP-001", nama: "Budi Santoso", jabatan: "Frontend Dev", tglMasuk: "2023-01-15", username: "user", pass: "123456", role: "karyawan", shift: "pagi" },
-            { id: "HRD-101", nama: "Siti Rahma", jabatan: "HR Manager", tglMasuk: "2022-05-10", username: "hrd", pass: "123456", role: "hrd", shift: "pagi" },
-            { id: "ADM-999", nama: "Administrator", jabatan: "System Admin", tglMasuk: "2021-01-01", username: "admin", pass: "123456", role: "admin", shift: "pagi" }
+            { id: "EMP-001", nama: "Budi Santoso", jabatan: "Frontend Dev", tglMasuk: "2023-01-15", username: "user", pass: "123456", role: "karyawan", shift: "pagi", allowChangePassword: false },
+            { id: "HRD-101", nama: "Siti Rahma", jabatan: "HR Manager", tglMasuk: "2022-05-10", username: "hrd", pass: "123456", role: "hrd", shift: "pagi", allowChangePassword: false },
+            { id: "ADM-999", nama: "Administrator", jabatan: "System Admin", tglMasuk: "2021-01-01", username: "admin", pass: "123456", role: "admin", shift: "pagi", allowChangePassword: false }
         ];
-        // Migrasi data lama: pastikan setiap user punya field shift (default pagi)
-        users.forEach(u => { if (!u.shift) u.shift = 'pagi'; });
+        // Migrasi data lama: pastikan setiap user punya field shift (default pagi) & izin ubah password (default belum diizinkan)
+        users.forEach(u => {
+            if (!u.shift) u.shift = 'pagi';
+            if (typeof u.allowChangePassword === 'undefined') u.allowChangePassword = false;
+            if (!u.role) u.role = 'karyawan';
+        });
 
-        // ================== KONFIGURASI SHIFT KERJA (8 JAM/HARI) ==================
-        const SHIFT_CONFIG = {
-            pagi:  { label: "Pagi",  jamMasuk: 8,  menitMasuk: 0, jamPulang: 16, menitPulang: 0, labelMasuk: "08:00 WIB", labelPulang: "16:00 WIB" },
-            siang: { label: "Siang", jamMasuk: 13, menitMasuk: 0, jamPulang: 21, menitPulang: 0, labelMasuk: "13:00 WIB", labelPulang: "21:00 WIB" }
+        // ================== KONFIGURASI SHIFT KERJA (BISA DIUBAH ADMIN/HRD, DISIMPAN DI localStorage) ==================
+        const DEFAULT_SHIFT_CONFIG = {
+            pagi:  { label: "Pagi",  jamMasuk: 8,  menitMasuk: 0, jamPulang: 16, menitPulang: 0, toleransi: 15, labelMasuk: "08:00 WIB", labelPulang: "16:00 WIB" },
+            siang: { label: "Siang", jamMasuk: 13, menitMasuk: 0, jamPulang: 21, menitPulang: 0, toleransi: 15, labelMasuk: "13:00 WIB", labelPulang: "21:00 WIB" }
         };
+        let SHIFT_CONFIG = JSON.parse(localStorage.getItem('absensi_shift_config')) || JSON.parse(JSON.stringify(DEFAULT_SHIFT_CONFIG));
+        // Migrasi: pastikan field lengkap (jaga-jaga config lama tersimpan sebagian)
+        Object.keys(DEFAULT_SHIFT_CONFIG).forEach(key => {
+            if (!SHIFT_CONFIG[key]) SHIFT_CONFIG[key] = JSON.parse(JSON.stringify(DEFAULT_SHIFT_CONFIG[key]));
+            if (typeof SHIFT_CONFIG[key].toleransi === 'undefined') SHIFT_CONFIG[key].toleransi = 15;
+        });
+        function saveShiftConfigToStorage() { localStorage.setItem('absensi_shift_config', JSON.stringify(SHIFT_CONFIG)); }
+        function pad2(n) { return String(n).padStart(2, '0'); }
         function getShiftConfig(user) {
             return SHIFT_CONFIG[(user && user.shift) || 'pagi'];
         }
+
+        // ================== PERMINTAAN UBAH PASSWORD KARYAWAN (BUTUH PERSETUJUAN ADMIN/HRD) ==================
+        let passwordRequests = JSON.parse(localStorage.getItem('absensi_pwreq')) || [];
+        function savePwReqToStorage() { localStorage.setItem('absensi_pwreq', JSON.stringify(passwordRequests)); }
 
         let absensiLogs = JSON.parse(localStorage.getItem('absensi_logs')) || [];
         let currentUser = JSON.parse(sessionStorage.getItem('absensi_session')) || null;
@@ -331,18 +347,26 @@
             const btnShiftMaster = document.getElementById('btnTabShiftMaster');
             const btnUsers = document.getElementById('btnTabUsers');
             const btnLokasi = document.getElementById('btnTabLokasi');
+            const btnKalender = document.getElementById('btnTabKalender');
+            const btnPwReq = document.getElementById('btnTabPassReq');
             const masterLabel = document.getElementById('masterDataLabel');
+            const kalenderSec = document.getElementById('kalenderSection');
+            const pwReqSec = document.getElementById('passReqSection');
 
             karySec.classList.add('hidden');
             hrdSec.classList.add('hidden');
             admSec.classList.add('hidden');
             shiftSec.classList.add('hidden');
             lokasiSec.classList.add('hidden');
+            if (kalenderSec) kalenderSec.classList.add('hidden');
+            if (pwReqSec) pwReqSec.classList.add('hidden');
             btnPanel.classList.add('hidden');
             btnVerif.classList.add('hidden');
             btnShiftMaster.classList.add('hidden');
             btnUsers.classList.add('hidden');
             btnLokasi.classList.add('hidden');
+            if (btnKalender) btnKalender.classList.add('hidden');
+            if (btnPwReq) btnPwReq.classList.add('hidden');
             masterLabel.classList.add('hidden');
 
             if(!currentUser) {
@@ -354,13 +378,15 @@
             authWrap.classList.add('hidden');
             appWrap.classList.remove('hidden');
             document.getElementById('navUserName').innerText = currentUser.nama;
-            document.getElementById('navUserRole').innerText = currentUser.role;
+            document.getElementById('navUserRole').innerText = roleLabel(currentUser.role);
 
-            if(currentUser.role === 'karyawan') {
+            if(currentUser.role === 'karyawan' || currentUser.role === 'magang') {
                 switchMainTab('absen');
             } else if(currentUser.role === 'hrd') {
                 btnPanel.classList.remove('hidden');
                 btnVerif.classList.remove('hidden');
+                if (btnKalender) btnKalender.classList.remove('hidden');
+                if (btnPwReq) btnPwReq.classList.remove('hidden');
                 document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line w-4";
                 document.getElementById('lblTabPanelText').innerText = "Monitoring & Rekap HRD";
                 switchMainTab('absen');
@@ -370,12 +396,15 @@
                 btnShiftMaster.classList.remove('hidden');
                 btnUsers.classList.remove('hidden');
                 btnLokasi.classList.remove('hidden');
+                if (btnKalender) btnKalender.classList.remove('hidden');
+                if (btnPwReq) btnPwReq.classList.remove('hidden');
                 masterLabel.classList.remove('hidden');
                 document.getElementById('lblTabPanelIcon').className = "fa-solid fa-users-gear w-4";
                 document.getElementById('lblTabPanelText').innerText = "Kelola User & Admin";
                 switchMainTab('absen');
             }
             updateSuratPendingBadge();
+            updatePwReqBadge();
         }
 
         // Badge notifikasi jumlah surat dokter yang menunggu verifikasi (di tab HRD/Admin)
@@ -404,6 +433,7 @@
             document.getElementById('myShiftLabel').innerText = shiftCfg.label;
 
             renderMyStats();
+            renderMyPasswordCard();
         }
 
         function switchMainTab(tab) {
@@ -413,7 +443,9 @@
             const verSec = document.getElementById('verifikasiSection');
             const shiftSec = document.getElementById('shiftMasterSection');
             const lokasiSec = document.getElementById('lokasiKantorSection');
-            const allBtns = ['btnTabAbsen','btnTabPanel','btnTabVerifikasi','btnTabShiftMaster','btnTabUsers','btnTabLokasi'].map(id => document.getElementById(id));
+            const kalenderSec = document.getElementById('kalenderSection');
+            const pwReqSec = document.getElementById('passReqSection');
+            const allBtns = ['btnTabAbsen','btnTabPanel','btnTabVerifikasi','btnTabShiftMaster','btnTabUsers','btnTabLokasi','btnTabKalender','btnTabPassReq'].map(id => document.getElementById(id)).filter(Boolean);
 
             karySec.classList.add('hidden');
             hrdSec.classList.add('hidden');
@@ -421,6 +453,8 @@
             verSec.classList.add('hidden');
             shiftSec.classList.add('hidden');
             lokasiSec.classList.add('hidden');
+            if (kalenderSec) kalenderSec.classList.add('hidden');
+            if (pwReqSec) pwReqSec.classList.add('hidden');
             allBtns.forEach(b => b.classList.remove('active'));
 
             if (tab === 'absen') {
@@ -443,6 +477,14 @@
                 lokasiSec.classList.remove('hidden');
                 document.getElementById('btnTabLokasi').classList.add('active');
                 renderLokasiKantorForm();
+            } else if (tab === 'kalender') {
+                if (kalenderSec) kalenderSec.classList.remove('hidden');
+                document.getElementById('btnTabKalender').classList.add('active');
+                renderIzinCalendar();
+            } else if (tab === 'passreq') {
+                if (pwReqSec) pwReqSec.classList.remove('hidden');
+                document.getElementById('btnTabPassReq').classList.add('active');
+                renderPasswordRequests();
             } else {
                 document.getElementById('btnTabPanel').classList.add('active');
                 if (currentUser.role === 'hrd') {
@@ -1108,7 +1150,7 @@
 
                 // Terlambat dihitung relatif terhadap jam masuk shift karyawan (bukan hardcode 08:00)
                 const totalMenitNow = (jamNow * 60) + menitNow;
-                const batasMenitMasuk = (shiftCfg.jamMasuk * 60) + shiftCfg.menitMasuk;
+                const batasMenitMasuk = (shiftCfg.jamMasuk * 60) + shiftCfg.menitMasuk + (shiftCfg.toleransi || 0);
                 let isLate = totalMenitNow > batasMenitMasuk;
                 let status = isLate ? 'Terlambat' : 'Hadir';
 
@@ -1165,11 +1207,41 @@
             renderMyStats();
         }
 
+        // Kategori izin tidak masuk (dipakai untuk kalender & rekap HRD/Admin)
+        const KATEGORI_IZIN_LABEL = {
+            cuti: 'Cuti Tahunan',
+            menikah: 'Menikah',
+            melahirkan: 'Melahirkan',
+            duka: 'Duka / Keluarga',
+            libur: 'Libur / Lainnya'
+        };
+
         function toggleUploadSurat() {
             const jenis = document.getElementById('jenisIzin').value;
             const container = document.getElementById('containerUploadSurat');
+            const kategoriContainer = document.getElementById('containerKategoriIzin');
+            const rangeContainer = document.getElementById('containerTanggalIzin');
             if (jenis === 'Sakit') container.classList.remove('hidden');
             else container.classList.add('hidden');
+
+            if (jenis === 'Izin') {
+                kategoriContainer.classList.remove('hidden');
+                rangeContainer.classList.remove('hidden');
+                const todayStr = new Date().toISOString().split('T')[0];
+                if (!document.getElementById('tglMulaiIzin').value) document.getElementById('tglMulaiIzin').value = todayStr;
+                if (!document.getElementById('tglSelesaiIzin').value) document.getElementById('tglSelesaiIzin').value = todayStr;
+            } else {
+                kategoriContainer.classList.add('hidden');
+                rangeContainer.classList.add('hidden');
+            }
+        }
+
+        // Hitung selisih hari (inklusif) antara 2 tanggal string YYYY-MM-DD
+        function hitungJumlahHari(tglMulai, tglSelesai) {
+            const d1 = new Date(tglMulai + 'T00:00:00');
+            const d2 = new Date(tglSelesai + 'T00:00:00');
+            const diff = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+            return diff >= 0 ? diff + 1 : 1;
         }
 
         async function submitIzin(e) {
@@ -1178,6 +1250,7 @@
             const alasan = document.getElementById('alasanIzin').value;
             const fileInput = document.getElementById('fileSuratDokter');
             const now = new Date();
+            const todayStr = now.toISOString().split('T')[0];
 
             let suratDokter = null;
             if (jenis === 'Sakit') {
@@ -1192,6 +1265,15 @@
                 }
             }
 
+            let tglMulai = todayStr, tglSelesai = todayStr, jumlahHari = 1, kategoriIzin = null;
+            if (jenis === 'Izin') {
+                kategoriIzin = document.getElementById('kategoriIzin').value;
+                tglMulai = document.getElementById('tglMulaiIzin').value || todayStr;
+                tglSelesai = document.getElementById('tglSelesaiIzin').value || todayStr;
+                if (tglSelesai < tglMulai) { showAlert('Tanggal selesai tidak boleh sebelum tanggal mulai.'); return; }
+                jumlahHari = hitungJumlahHari(tglMulai, tglSelesai);
+            }
+
             const newLog = {
                 id: Date.now(),
                 userId: currentUser.id,
@@ -1201,7 +1283,10 @@
                 status: jenis,
                 waktuMasuk: now.toLocaleTimeString('id-ID'),
                 waktuPulang: '-',
-                tanggal: now.toISOString().split('T')[0],
+                tanggal: jenis === 'Izin' ? tglMulai : todayStr,
+                tanggalSelesai: jenis === 'Izin' ? tglSelesai : null,
+                jumlahHari: jenis === 'Izin' ? jumlahHari : 1,
+                kategoriIzin: kategoriIzin,
                 lokasi: 'Keterangan: ' + alasan,
                 suratDokter: suratDokter,
                 statusVerifikasi: jenis === 'Sakit' ? 'Menunggu Verifikasi' : null,
@@ -1211,7 +1296,8 @@
 
             absensiLogs.unshift(newLog);
             saveLogsToStorage();
-            showAlert(`Pengajuan ${jenis} berhasil dikirim!` + (suratDokter ? ' Surat dokter akan diverifikasi HRD/Admin.' : ''), 'success');
+            const kategoriMsg = kategoriIzin ? ` (${KATEGORI_IZIN_LABEL[kategoriIzin] || kategoriIzin}, ${jumlahHari} hari)` : '';
+            showAlert(`Pengajuan ${jenis}${kategoriMsg} berhasil dikirim!` + (suratDokter ? ' Surat dokter akan diverifikasi HRD/Admin.' : ''), 'success');
             fileInput.value = '';
             document.getElementById('alasanIzin').value = '';
             renderMyStats();
@@ -1259,6 +1345,7 @@
         function renderTable() {
             const tbody = document.getElementById('hrdTableBody');
             tbody.innerHTML = '';
+            renderTodayStats();
 
             const filterVal = document.getElementById('filterDate').value; // format YYYY-MM-DD
             const displayedLogs = filterVal ? absensiLogs.filter(l => l.tanggal === filterVal) : absensiLogs;
@@ -1570,7 +1657,7 @@
             });
 
             if (rows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400 italic">Jam kerja tidak ditemukan.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400 italic">Jam kerja tidak ditemukan.</td></tr>`;
                 return;
             }
 
@@ -1583,9 +1670,10 @@
                         <td class="p-3 font-semibold text-slate-700">Shift ${cfg.label}</td>
                         <td class="p-3">Senin - Sabtu</td>
                         <td class="p-3">${cfg.labelMasuk} - ${cfg.labelPulang}</td>
-                        <td class="p-3">15 menit</td>
+                        <td class="p-3">${cfg.toleransi} menit</td>
                         <td class="p-3"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold">${jumlahKaryawan} Karyawan</span></td>
                         <td class="p-3"><span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold">AKTIF</span></td>
+                        <td class="p-3 text-center"><button onclick="openShiftTimeModal('${key}')" class="text-indigo-600 hover:underline text-[11px]"><i class="fa-solid fa-pen mr-1"></i>Ubah Jam</button></td>
                     </tr>
                 `;
             });
@@ -1618,16 +1706,49 @@
                             <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-semibold">${getShiftConfig(u).label}</span>
                             <br><span class="text-[10px] text-slate-400">${getShiftConfig(u).labelMasuk} - ${getShiftConfig(u).labelPulang}</span>
                         </td>
-                        <td class="p-2 capitalize"><span class="bg-slate-100 px-2 py-0.5 rounded">${u.role}</span></td>
+                        <td class="p-2 capitalize"><span class="bg-slate-100 px-2 py-0.5 rounded">${roleLabel(u.role)}</span></td>
                         <td class="p-2">${secBadge}</td>
+                        <td class="p-2">
+                            <button onclick="toggleAllowChangePassword('${u.id}')" class="text-[10px] font-bold px-2 py-0.5 rounded ${u.allowChangePassword ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
+                                ${u.allowChangePassword ? '<i class="fa-solid fa-lock-open mr-1"></i>Diizinkan' : '<i class="fa-solid fa-lock mr-1"></i>Belum Diizinkan'}
+                            </button>
+                        </td>
                         <td class="p-2 text-center space-x-2">
                             <button onclick="openShiftModal('${u.id}')" class="text-indigo-600 hover:underline text-[11px]">Atur Shift</button>
+                            <button onclick="openPasswordModal('${u.id}')" class="text-blue-600 hover:underline text-[11px]">Password</button>
                             ${resetBtn}
                             <button onclick="deleteUser('${u.id}')" class="text-red-600 hover:underline text-[11px]">Hapus</button>
                         </td>
                     </tr>
                 `;
             });
+            renderTodayStats();
+        }
+
+        function roleLabel(role) {
+            if (role === 'admin') return 'Admin';
+            if (role === 'hrd') return 'HRD';
+            if (role === 'magang') return 'Magang / PKL';
+            return 'Karyawan';
+        }
+
+        // ================== STATISTIK HARIAN (MONITORING DAFTAR KARYAWAN) ==================
+        function renderTodayStats() {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const todayLogs = absensiLogs.filter(l => l.tanggal === todayStr);
+            const totalKaryawan = users.length;
+            const hadirCount = todayLogs.filter(l => l.status === 'Hadir' || l.status === 'Terlambat').length;
+            const izinCount = todayLogs.filter(l => l.status === 'Izin').length;
+            const sakitCount = todayLogs.filter(l => l.status === 'Sakit').length;
+            const sudahCatat = new Set(todayLogs.map(l => l.userId)).size;
+            const belumAbsen = Math.max(totalKaryawan - sudahCatat, 0);
+
+            const setText = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+            setText('statTodayTotal', totalKaryawan);
+            setText('statTodayHadir', hadirCount);
+            setText('statTodayIzin', izinCount);
+            setText('statTodaySakit', sakitCount);
+            setText('statTodayBelum', belumAbsen);
         }
 
         function addUser(e) {
@@ -1640,7 +1761,8 @@
                 username: document.getElementById('addUsername').value.trim(),
                 pass: "123456",
                 role: document.getElementById('addRole').value,
-                shift: document.getElementById('addShift').value
+                shift: document.getElementById('addShift').value,
+                allowChangePassword: false
             };
             users.push(newUser);
             saveUsersToStorage();
@@ -1683,6 +1805,277 @@
             saveUsersToStorage();
             renderAdminUsers();
             showAlert('User berhasil dihapus.');
+        }
+
+        // ================== MANAJEMEN PASSWORD OLEH ADMIN (LANGSUNG, TANPA APPROVAL) ==================
+        let activePasswordUserId = null;
+        function openPasswordModal(userId) {
+            const u = users.find(x => x.id === userId);
+            if (!u) return;
+            activePasswordUserId = userId;
+            document.getElementById('passwordModalNama').innerText = `${u.nama} (${u.id}) - ${u.jabatan}`;
+            document.getElementById('passwordModalInput').value = '';
+            document.getElementById('passwordModalAllow').checked = !!u.allowChangePassword;
+            document.getElementById('passwordModal').classList.remove('hidden');
+        }
+        function closePasswordModal() {
+            document.getElementById('passwordModal').classList.add('hidden');
+            activePasswordUserId = null;
+        }
+        function savePasswordChangeByAdmin() {
+            const u = users.find(x => x.id === activePasswordUserId);
+            if (!u) return;
+            const newPass = document.getElementById('passwordModalInput').value.trim();
+            const allow = document.getElementById('passwordModalAllow').checked;
+            u.allowChangePassword = allow;
+            if (newPass) {
+                if (newPass.length < 4) { showAlert('Password baru minimal 4 karakter.'); return; }
+                u.pass = newPass;
+            }
+            saveUsersToStorage();
+            closePasswordModal();
+            renderAdminUsers();
+            showAlert(`Pengaturan password <b>${u.nama}</b> berhasil disimpan${newPass ? ' (password baru diterapkan)' : ''}.`, 'success');
+        }
+
+        // ================== PERMINTAAN GANTI PASSWORD OLEH KARYAWAN (BUTUH PERSETUJUAN) ==================
+        function renderMyPasswordCard() {
+            const container = document.getElementById('myPasswordFormContainer');
+            const locked = document.getElementById('myPasswordLockedInfo');
+            if (!container || !locked || !currentUser) return;
+            if (currentUser.allowChangePassword) {
+                container.classList.remove('hidden');
+                locked.classList.add('hidden');
+            } else {
+                container.classList.add('hidden');
+                locked.classList.remove('hidden');
+            }
+            const myPending = passwordRequests.filter(r => r.userId === currentUser.id && r.status === 'pending');
+            const infoEl = document.getElementById('myPasswordPendingInfo');
+            if (infoEl) {
+                infoEl.innerHTML = myPending.length
+                    ? `<p class="text-amber-600"><i class="fa-solid fa-hourglass-half mr-1"></i>Pengajuan ganti password Anda sedang menunggu persetujuan Admin/HRD.</p>`
+                    : '';
+            }
+        }
+
+        function submitPasswordRequest(e) {
+            e.preventDefault();
+            if (!currentUser || !currentUser.allowChangePassword) {
+                showAlert('Anda belum diizinkan Admin untuk mengubah password sendiri.');
+                return;
+            }
+            const newPass = document.getElementById('myNewPassword').value.trim();
+            const confirmPass = document.getElementById('myConfirmPassword').value.trim();
+            if (newPass.length < 4) { showAlert('Password baru minimal 4 karakter.'); return; }
+            if (newPass !== confirmPass) { showAlert('Konfirmasi password tidak sama.'); return; }
+
+            // Hapus request lama yang masih pending dari user ini (supaya tidak dobel)
+            passwordRequests = passwordRequests.filter(r => !(r.userId === currentUser.id && r.status === 'pending'));
+
+            passwordRequests.unshift({
+                id: Date.now(),
+                userId: currentUser.id,
+                nama: currentUser.nama,
+                jabatan: currentUser.jabatan,
+                newPass: newPass,
+                status: 'pending',
+                requestedAt: new Date().toLocaleString('id-ID')
+            });
+            savePwReqToStorage();
+            document.getElementById('myNewPassword').value = '';
+            document.getElementById('myConfirmPassword').value = '';
+            showAlert('Pengajuan ganti password terkirim! Menunggu persetujuan Admin/HRD.', 'success');
+            renderMyPasswordCard();
+            updatePwReqBadge();
+        }
+
+        // Tampilkan password baru yang diajukan dalam bentuk tersamar (masking), bukan teks asli,
+        // supaya tetap tidak terekspos gamblang di layar Admin/HRD.
+        function maskPassword(pass) {
+            if (!pass) return '';
+            if (pass.length <= 2) return '*'.repeat(pass.length);
+            return pass[0] + '*'.repeat(Math.max(pass.length - 2, 1)) + pass[pass.length - 1];
+        }
+
+        function updatePwReqBadge() {
+            const badge = document.getElementById('badgePwReqPending');
+            if (!badge) return;
+            const pendingCount = passwordRequests.filter(r => r.status === 'pending').length;
+            if (pendingCount > 0) {
+                badge.innerText = pendingCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function renderPasswordRequests() {
+            const tbody = document.getElementById('pwReqTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            const pending = passwordRequests.filter(r => r.status === 'pending');
+            if (pending.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400 italic">Tidak ada permintaan ganti password yang menunggu.</td></tr>`;
+                updatePwReqBadge();
+                return;
+            }
+            pending.forEach(r => {
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3 font-semibold text-slate-700">${r.nama}<br><span class="text-[10px] text-slate-400">${r.jabatan}</span></td>
+                        <td class="p-3 text-[11px] text-slate-500">${r.requestedAt}</td>
+                        <td class="p-3 font-mono tracking-widest">${maskPassword(r.newPass)}</td>
+                        <td class="p-3"><span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold">MENUNGGU</span></td>
+                        <td class="p-3 text-center space-x-2">
+                            <button onclick="approvePasswordRequest(${r.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] px-2.5 py-1 rounded-lg"><i class="fa-solid fa-check mr-1"></i>Setujui</button>
+                            <button onclick="rejectPasswordRequest(${r.id})" class="bg-red-600 hover:bg-red-700 text-white text-[11px] px-2.5 py-1 rounded-lg"><i class="fa-solid fa-xmark mr-1"></i>Tolak</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            updatePwReqBadge();
+        }
+
+        function approvePasswordRequest(id) {
+            const req = passwordRequests.find(r => r.id === id);
+            if (!req) return;
+            const u = users.find(x => x.id === req.userId);
+            if (u) { u.pass = req.newPass; saveUsersToStorage(); }
+            req.status = 'approved';
+            savePwReqToStorage();
+            renderPasswordRequests();
+            showAlert(`Password <b>${req.nama}</b> berhasil diperbarui.`, 'success');
+        }
+
+        function rejectPasswordRequest(id) {
+            const req = passwordRequests.find(r => r.id === id);
+            if (!req) return;
+            req.status = 'rejected';
+            savePwReqToStorage();
+            renderPasswordRequests();
+            showAlert(`Pengajuan ganti password <b>${req.nama}</b> ditolak.`);
+        }
+
+        function toggleAllowChangePassword(userId) {
+            const u = users.find(x => x.id === userId);
+            if (!u) return;
+            u.allowChangePassword = !u.allowChangePassword;
+            saveUsersToStorage();
+            renderAdminUsers();
+            showAlert(`Izin ubah password mandiri untuk <b>${u.nama}</b> kini <b>${u.allowChangePassword ? 'DIAKTIFKAN' : 'DINONAKTIFKAN'}</b>.`, 'success');
+        }
+
+        // ================== EDIT JAM SHIFT (ADMIN/HRD BISA UBAH JAM MASUK & PULANG) ==================
+        let activeShiftEditKey = null;
+        function openShiftTimeModal(key) {
+            const cfg = SHIFT_CONFIG[key];
+            if (!cfg) return;
+            activeShiftEditKey = key;
+            document.getElementById('shiftTimeModalNama').innerText = `Shift ${cfg.label}`;
+            document.getElementById('shiftTimeMasuk').value = `${pad2(cfg.jamMasuk)}:${pad2(cfg.menitMasuk)}`;
+            document.getElementById('shiftTimePulang').value = `${pad2(cfg.jamPulang)}:${pad2(cfg.menitPulang)}`;
+            document.getElementById('shiftTimeToleransi').value = cfg.toleransi;
+            document.getElementById('shiftTimeEditModal').classList.remove('hidden');
+        }
+        function closeShiftTimeModal() {
+            document.getElementById('shiftTimeEditModal').classList.add('hidden');
+            activeShiftEditKey = null;
+        }
+        function saveShiftTimeChange() {
+            const cfg = SHIFT_CONFIG[activeShiftEditKey];
+            if (!cfg) return;
+            const masukVal = document.getElementById('shiftTimeMasuk').value;
+            const pulangVal = document.getElementById('shiftTimePulang').value;
+            const toleransi = parseInt(document.getElementById('shiftTimeToleransi').value, 10) || 0;
+            if (!masukVal || !pulangVal) { showAlert('Jam masuk & jam pulang wajib diisi.'); return; }
+            const [jm, mm] = masukVal.split(':').map(Number);
+            const [jp, mp] = pulangVal.split(':').map(Number);
+            cfg.jamMasuk = jm; cfg.menitMasuk = mm;
+            cfg.jamPulang = jp; cfg.menitPulang = mp;
+            cfg.toleransi = toleransi;
+            cfg.labelMasuk = `${pad2(jm)}:${pad2(mm)} WIB`;
+            cfg.labelPulang = `${pad2(jp)}:${pad2(mp)} WIB`;
+            saveShiftConfigToStorage();
+            closeShiftTimeModal();
+            renderShiftMasterTable();
+            showAlert(`Jam kerja Shift <b>${cfg.label}</b> berhasil diubah menjadi <b>${cfg.labelMasuk} - ${cfg.labelPulang}</b>.`, 'success');
+            // Sinkronkan tampilan jika user yang sedang login memakai shift ini
+            if (currentUser && (currentUser.shift || 'pagi') === activeShiftEditKey) {
+                setupKaryawanView();
+            }
+        }
+
+        // ================== KALENDER IZIN / CUTI (ADMIN & HRD) ==================
+        let kalenderViewDate = new Date(); // tanggal acuan bulan yang sedang ditampilkan
+
+        function izinCoversDate(log, dateStr) {
+            if (log.status !== 'Izin') return false;
+            const start = log.tanggal;
+            const end = log.tanggalSelesai || log.tanggal;
+            return dateStr >= start && dateStr <= end;
+        }
+
+        function kalenderChangeMonth(delta) {
+            kalenderViewDate.setMonth(kalenderViewDate.getMonth() + delta);
+            renderIzinCalendar();
+        }
+
+        function renderIzinCalendar() {
+            const grid = document.getElementById('kalenderGrid');
+            const label = document.getElementById('kalenderBulanLabel');
+            const listBody = document.getElementById('kalenderListBody');
+            if (!grid || !label || !listBody) return;
+
+            const year = kalenderViewDate.getFullYear();
+            const month = kalenderViewDate.getMonth();
+            const bulanNama = kalenderViewDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+            label.innerText = bulanNama;
+
+            const firstDay = new Date(year, month, 1);
+            const startOffset = firstDay.getDay(); // 0=Minggu
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const izinLogs = absensiLogs.filter(l => l.status === 'Izin');
+
+            let html = '';
+            for (let i = 0; i < startOffset; i++) {
+                html += `<div class="p-1 min-h-[64px] bg-slate-50 rounded-lg"></div>`;
+            }
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${pad2(month + 1)}-${pad2(d)}`;
+                const todayStr = new Date().toISOString().split('T')[0];
+                const isToday = dateStr === todayStr;
+                const matches = izinLogs.filter(l => izinCoversDate(l, dateStr));
+                const badges = matches.slice(0, 2).map(l => `<span class="block truncate text-[9px] bg-amber-100 text-amber-800 rounded px-1 py-0.5 mt-0.5" title="${l.nama} - ${KATEGORI_IZIN_LABEL[l.kategoriIzin] || 'Izin'}">${l.nama.split(' ')[0]}</span>`).join('');
+                const more = matches.length > 2 ? `<span class="block text-[9px] text-slate-400">+${matches.length - 2} lagi</span>` : '';
+                html += `
+                    <div class="p-1 min-h-[64px] rounded-lg border ${isToday ? 'border-blue-400 bg-blue-50' : 'border-slate-100'}">
+                        <span class="text-[10px] font-bold ${isToday ? 'text-blue-600' : 'text-slate-500'}">${d}</span>
+                        ${badges}${more}
+                    </div>
+                `;
+            }
+            grid.innerHTML = html;
+
+            // Daftar pengajuan izin yang bersinggungan dengan bulan yang sedang ditampilkan
+            const monthStart = `${year}-${pad2(month + 1)}-01`;
+            const monthEnd = `${year}-${pad2(month + 1)}-${pad2(daysInMonth)}`;
+            const relevantLogs = izinLogs.filter(l => (l.tanggal <= monthEnd) && ((l.tanggalSelesai || l.tanggal) >= monthStart))
+                .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+
+            if (relevantLogs.length === 0) {
+                listBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400 italic">Tidak ada pengajuan izin/cuti pada bulan ini.</td></tr>`;
+                return;
+            }
+            listBody.innerHTML = relevantLogs.map(l => `
+                <tr class="hover:bg-slate-50">
+                    <td class="p-3 font-semibold text-slate-700">${l.nama}<br><span class="text-[10px] text-slate-400">${l.jabatan}</span></td>
+                    <td class="p-3"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">${KATEGORI_IZIN_LABEL[l.kategoriIzin] || 'Izin'}</span></td>
+                    <td class="p-3">${l.tanggal}${l.tanggalSelesai && l.tanggalSelesai !== l.tanggal ? ' s/d ' + l.tanggalSelesai : ''}</td>
+                    <td class="p-3 font-bold text-slate-700">${l.jumlahHari || 1} hari</td>
+                    <td class="p-3 text-slate-500 italic">${(l.lokasi || '').replace('Keterangan: ', '')}</td>
+                </tr>
+            `).join('');
         }
 
         function showForgotPasswordModal() { document.getElementById('forgotModal').classList.remove('hidden'); }
