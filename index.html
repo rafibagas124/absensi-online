@@ -1308,5 +1308,68 @@
             });
         }
     </script>
+
+    <!-- ======== PWA: TOMBOL INSTALL/DOWNLOAD LANGSUNG DI DALAM APLIKASI ======== -->
+    <button id="btnInstallApp" onclick="handleInstallClick()" class="hidden fixed bottom-5 right-5 z-50 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-3 rounded-full shadow-lg items-center gap-2 transition no-print">
+        <i class="fa-solid fa-download"></i> Install App
+    </button>
+
+    <!-- Modal instruksi khusus iOS/Safari (tidak mendukung prompt install otomatis) -->
+    <div id="iosInstallModal" class="hidden fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 no-print">
+        <div class="bg-white rounded-xl max-w-sm w-full p-5 text-center">
+            <i class="fa-solid fa-circle-check text-blue-600 text-3xl mb-2"></i>
+            <h3 class="font-bold text-slate-800 mb-2">Install AbsensiPro</h3>
+            <p class="text-sm text-slate-600 mb-4">Di iPhone/iPad, install lewat Safari: tekan tombol <i class="fa-solid fa-arrow-up-from-bracket"></i> (Share) di bawah, lalu pilih <b>"Add to Home Screen"</b>.</p>
+            <button type="button" onclick="document.getElementById('iosInstallModal').classList.add('hidden')" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">Mengerti</button>
+        </div>
+    </div>
+
+    <script>
+        // Tangkap event PWA install (Chrome/Edge/Android) & tampilkan tombol
+        let deferredInstallPrompt = null;
+        const btnInstallApp = document.getElementById('btnInstallApp');
+
+        function isStandaloneMode() {
+            return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        }
+        function isIos() {
+            return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+            if (!isStandaloneMode()) {
+                btnInstallApp.classList.remove('hidden');
+                btnInstallApp.classList.add('flex');
+            }
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+            btnInstallApp.classList.add('hidden');
+            btnInstallApp.classList.remove('flex');
+        });
+
+        function handleInstallClick() {
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                deferredInstallPrompt.userChoice.finally(() => {
+                    deferredInstallPrompt = null;
+                    btnInstallApp.classList.add('hidden');
+                    btnInstallApp.classList.remove('flex');
+                });
+            } else if (isIos()) {
+                document.getElementById('iosInstallModal').classList.remove('hidden');
+            }
+        }
+
+        // Fallback: iOS/Safari tidak memicu 'beforeinstallprompt', jadi tombol tetap ditampilkan
+        // manual di sana (kecuali sudah terinstall/dibuka sebagai app).
+        if (isIos() && !isStandaloneMode()) {
+            btnInstallApp.classList.remove('hidden');
+            btnInstallApp.classList.add('flex');
+        }
+    </script>
 </body>
 </html>
