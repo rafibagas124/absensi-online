@@ -1,3 +1,8 @@
+// ================== KONFIGURASI BACKEND PHP (GEOFENCING SERVER-SIDE) ==================
+        // Ganti sesuai lokasi folder backend-php/ Anda di-host, contoh:
+        // 'https://domainanda.com/backend-php' atau '/backend-php' kalau 1 domain dengan frontend.
+        const API_BASE_URL = '/backend-php';
+
         // DATABASE LOKAL
         let users = JSON.parse(localStorage.getItem('absensi_users')) || [
             { id: "EMP-001", nama: "Budi Santoso", jabatan: "Frontend Dev", tglMasuk: "2023-01-15", username: "user", pass: "123456", role: "karyawan", shift: "pagi" },
@@ -24,16 +29,37 @@
         let currentGPSValid = null; // true = dalam radius, false = di luar radius, null = belum ada acuan/lokasi
         let currentGPSDistance = null;
 
-        // ================== LOKASI KANTOR (GEOFENCING) ==================
-        // Disimpan oleh Admin lewat panel "Lokasi Kantor". Selama belum diatur
-        // (null), validasi jarak GPS saat absen TIDAK diaktifkan (backward
-        // compatible dengan perilaku sebelumnya).
-        let officeLocation = JSON.parse(localStorage.getItem('absensi_office_location')) || null;
-        function saveOfficeLocationToStorage() {
-            localStorage.setItem('absensi_office_location', JSON.stringify(officeLocation));
+        // ================== LOKASI KANTOR / CABANG (GEOFENCING MULTI-LOKASI) ==================
+        // Sumber data resmi sekarang adalah backend PHP + MySQL (folder backend-php/),
+        // BUKAN localStorage lagi. Array di bawah ini hanya cache di memori browser untuk
+        // menampilkan preview jarak/nama kantor terdekat ke karyawan (UX saja).
+        // Keputusan FINAL diterima/ditolaknya absen tetap dihitung ulang di server
+        // (lihat absen_submit.php) supaya tidak bisa dimanipulasi dari sisi client.
+        // Setiap kantor: { id, nama, alamat, lat, lng, radius }
+        let officeLocations = [];
+
+        async function loadOfficeLocationsFromServer() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/office_locations.php`);
+                const json = await res.json();
+                if (json.success) {
+                    officeLocations = json.data.map(o => ({ ...o, lat: parseFloat(o.lat), lng: parseFloat(o.lng), radius: parseInt(o.radius, 10) }));
+                } else {
+                    officeLocations = [];
+                }
+            } catch (err) {
+                // Backend belum terhubung / offline. Fallback: validasi jarak dinonaktifkan
+                // sampai koneksi ke backend-php pulih (karyawan tetap tidak bisa absen kalau
+                // backend down, karena submitAbsen() mewajibkan panggilan ke server).
+                officeLocations = [];
+                console.error('Gagal memuat lokasi kantor dari backend:', err);
+            }
+            return officeLocations;
         }
 
-        // Rumus Haversine: menghitung jarak (meter) antara dua titik koordinat GPS
+        // Rumus Haversine: menghitung jarak (meter) antara dua titik koordinat GPS.
+        // Dipakai di sisi client HANYA untuk preview UI (indikator jarak real-time ke
+        // karyawan). Perhitungan yang menentukan sah/tidaknya absen ada di server (PHP).
         function hitungJarakMeter(lat1, lng1, lat2, lng2) {
             const R = 6371000; // radius bumi (meter)
             const toRad = (d) => d * Math.PI / 180;
@@ -43,6 +69,27 @@
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             return R * c;
         }
+
+        // Cari kantor/cabang TERDEKAT dari titik (lat,lng) di antara seluruh kantor terdaftar.
+        // Mengembalikan null kalau Admin belum mendaftarkan satupun kantor.
+        function findNearestOffice(lat, lng) {
+            if (!officeLocations.length) return null;
+            let nearest = null;
+            officeLocations.forEach(office => {
+                const dist = hitungJarakMeter(lat, lng, office.lat, office.lng);
+                if (!nearest || dist < nearest.distance) {
+                    nearest = { office, distance: Math.round(dist), valid: dist <= office.radius };
+                }
+            });
+            return nearest;
+        }
+
+        // Akurasi GPS minimal yang diwajibkan (meter). Kalau akurasi device lebih buruk
+        // (angka lebih besar) dari ini, absen ditolak dan user diminta pindah ke area terbuka.
+        const GPS_ACCURACY_THRESHOLD_METER = 75;
+        let currentNearestOffice = null;
+        let currentGPSAccuracy = null;
+        let currentGPSSuspicious = false; // indikasi kemungkinan Fake GPS / Mock Location
 
         // ================== KEAMANAN LOGIN (ANTI BRUTE-FORCE) ==================
         // Struktur per-username: { failCount, banUntil, banStage, permaBanned }
@@ -109,6 +156,7 @@
         document.addEventListener("DOMContentLoaded", () => {
             saveUsersToStorage();
             checkSession();
+            loadOfficeLocationsFromServer(); // ambil daftar kantor dari backend PHP (bukan localStorage)
             setInterval(updateOverlayTime, 1000);
             setTimeout(loadFaceModels, 800); // preload model AI di background
             setTimeout(initGoogleSignIn, 500); // tunggu script Google Identity Services siap
@@ -867,16 +915,27 @@
         // Menerapkan hasil koordinat (baik dari GPS otomatis maupun input manual) ke state
         // absen & tampilan, termasuk perhitungan jarak/validasi radius kantor (geofencing).
         // Dipusatkan di satu fungsi supaya perilaku GPS otomatis dan manual selalu konsisten.
-        function applyGPSResult(lat, lng, isManual) {
+        function applyGPSResult(lat, lng, isManual, accuracy) {
             const addrEl = document.getElementById('gpsAddress');
             currentLat = lat;
             currentLng = lng;
-            const coordText = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}` + (isManual ? ' (input manual)' : '');
+            currentGPSAccuracy = (typeof accuracy === 'number' && !isNaN(accuracy)) ? Math.round(accuracy) : null;
 
-            if (officeLocation) {
-                currentGPSDistance = Math.round(hitungJarakMeter(lat, lng, officeLocation.lat, officeLocation.lng));
-                currentGPSValid = currentGPSDistance <= officeLocation.radius;
-                currentGPS = `${coordText} (${currentGPSDistance}m dari kantor)`;
+            // Heuristik deteksi Fake GPS / Mock Location: GPS asli hampir tidak pernah
+            // melaporkan akurasi persis 0 (atau negatif). Ini BUKAN deteksi 100% pasti —
+            // sekadar sinyal tambahan, karena Web Geolocation API tidak punya flag resmi "is mocked".
+            currentGPSSuspicious = (!isManual && currentGPSAccuracy !== null && currentGPSAccuracy <= 0);
+
+            let coordText = `Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}` +
+                (isManual ? ' (input manual)' : (currentGPSAccuracy !== null ? ` (akurasi ±${currentGPSAccuracy}m)` : ''));
+
+            const nearest = findNearestOffice(lat, lng);
+            currentNearestOffice = nearest;
+
+            if (nearest) {
+                currentGPSDistance = nearest.distance;
+                currentGPSValid = nearest.valid;
+                currentGPS = `${coordText} — ${currentGPSDistance}m dari ${nearest.office.nama}`;
                 if (addrEl) {
                     addrEl.innerHTML = currentGPS + (currentGPSValid
                         ? ' <span class="text-emerald-600 font-semibold"><i class="fa-solid fa-circle-check mr-0.5"></i>Dalam radius kantor</span>'
@@ -888,24 +947,48 @@
                 currentGPS = coordText;
                 if (addrEl) addrEl.innerHTML = currentGPS + ' <span class="text-slate-400">(lokasi kantor belum diatur Admin)</span>';
             }
+
+            if (!isManual && addrEl) {
+                if (currentGPSSuspicious) {
+                    addrEl.innerHTML += ' <span class="text-red-600 font-bold block mt-1"><i class="fa-solid fa-triangle-exclamation mr-0.5"></i>Terindikasi Fake GPS/Mock Location (akurasi tidak wajar). Absen akan ditolak.</span>';
+                } else if (currentGPSAccuracy !== null && currentGPSAccuracy > GPS_ACCURACY_THRESHOLD_METER) {
+                    addrEl.innerHTML += ` <span class="text-amber-600 font-semibold block mt-1"><i class="fa-solid fa-triangle-exclamation mr-0.5"></i>Akurasi GPS rendah (±${currentGPSAccuracy}m). Pindah ke area terbuka / aktifkan GPS akurasi tinggi lalu coba lagi.</span>`;
+                }
+            }
         }
 
         function getGPSLocation() {
             const addrEl = document.getElementById('gpsAddress');
-            if(!navigator.geolocation) return addrEl.innerText = "Geolocation tidak didukung.";
+            if(!navigator.geolocation) return addrEl.innerText = "Geolocation tidak didukung perangkat/browser ini.";
             addrEl.innerText = "Mendeteksi lokasi GPS...";
             navigator.geolocation.getCurrentPosition(
                 pos => {
-                    applyGPSResult(pos.coords.latitude, pos.coords.longitude, false);
+                    applyGPSResult(pos.coords.latitude, pos.coords.longitude, false, pos.coords.accuracy);
                 },
                 err => {
                     currentLat = null;
                     currentLng = null;
-                    currentGPSValid = false;
+                    currentGPSValid = null;
                     currentGPSDistance = null;
+                    currentNearestOffice = null;
+                    currentGPSAccuracy = null;
+                    currentGPSSuspicious = false;
+
+                    // Tangani tiap kode error secara spesifik (PERMISSION_DENIED / POSITION_UNAVAILABLE / TIMEOUT)
+                    let pesan;
+                    if (err.code === err.PERMISSION_DENIED) {
+                        pesan = 'Izin akses lokasi ditolak. Aktifkan izin lokasi untuk browser/aplikasi ini di pengaturan perangkat, lalu coba lagi.';
+                    } else if (err.code === err.POSITION_UNAVAILABLE) {
+                        pesan = 'Sinyal GPS tidak tersedia/lemah. Pastikan GPS perangkat aktif dan Anda berada di area terbuka.';
+                    } else if (err.code === err.TIMEOUT) {
+                        pesan = 'Waktu pencarian lokasi GPS habis (timeout). Coba lagi di area dengan sinyal lebih baik.';
+                    } else {
+                        pesan = 'Lokasi GPS tidak tersedia (error tidak dikenal).';
+                    }
                     currentGPS = "Lokasi GPS tidak tersedia";
-                    addrEl.innerText = currentGPS + " [Izin Lokasi Ditolak] — Anda tetap bisa memakai tombol \"Input Manual\" untuk memasukkan koordinat secara manual.";
-                }
+                    addrEl.innerHTML = `<span class="text-red-600 font-semibold"><i class="fa-solid fa-circle-xmark mr-1"></i>${pesan}</span> Anda tetap bisa memakai tombol "Input Manual" untuk memasukkan koordinat secara manual.`;
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
         }
 
@@ -935,15 +1018,15 @@
             applyGPSResult(lat, lng, true);
             toggleManualGPS(false);
 
-            if (officeLocation && currentGPSValid === false) {
-                showAlert(`Koordinat manual diterapkan, tapi jaraknya sekitar <b>${currentGPSDistance} meter</b> dari kantor (di luar radius ${officeLocation.radius} meter). Absen akan ditolak sampai koordinat berada dalam radius kantor.`);
+            if (currentNearestOffice && currentGPSValid === false) {
+                showAlert(`Koordinat manual diterapkan, tapi jaraknya sekitar <b>${currentGPSDistance} meter</b> dari ${currentNearestOffice.office.nama} (di luar radius ${currentNearestOffice.office.radius} meter). Absen akan ditolak sampai koordinat berada dalam radius kantor.`);
             } else {
                 showAlert('Koordinat GPS manual berhasil diterapkan.', 'success');
             }
         }
 
         // LOGIKA ABSEN MASUK & PULANG (LENGKAP DENGAN ANTI-CHEAT)
-        function submitAbsen(tipe) {
+        async function submitAbsen(tipe) {
             if(!currentUser) return;
 
             // ================== GATING VERIFIKASI AI FACE RECOGNITION ==================
@@ -963,17 +1046,50 @@
                 return showAlert('<b>Pencahayaan kurang mendukung!</b> Sesuaikan pencahayaan ruangan (jangan terlalu gelap/terlalu terang) lalu coba lagi.');
             }
 
-            // ================== GATING LOKASI GPS (GEOFENCING KANTOR) ==================
-            // Hanya aktif kalau Admin sudah mengatur lokasi kantor. Kalau belum
-            // diatur, perilaku lama tetap berlaku (tidak ada validasi jarak).
-            if (officeLocation) {
-                if (currentLat === null || currentLng === null) {
-                    return showAlert('<b>Lokasi GPS belum terdeteksi!</b> Klik tombol ambil lokasi / izinkan akses lokasi terlebih dahulu.');
-                }
-                if (currentGPSValid === false) {
-                    return showAlert(`<b>Di luar area kantor!</b> Jarak Anda saat ini sekitar <b>${currentGPSDistance} meter</b> dari kantor (maksimal ${officeLocation.radius} meter). Absen hanya bisa dilakukan di sekitar lokasi kantor.`);
-                }
+            // ================== GATING LOKASI GPS (VALIDASI GEOFENCING DI SERVER PHP) ==================
+            // Koordinat GPS WAJIB sudah terdeteksi, lalu dikirim ke backend PHP. Rumus
+            // Haversine dan keputusan akhir tolak/terima dihitung DI SERVER (absen_submit.php),
+            // BUKAN di JavaScript ini, supaya tidak bisa dimanipulasi dari sisi client/browser.
+            if (currentLat === null || currentLng === null) {
+                return showAlert('<b>Lokasi GPS belum terdeteksi!</b> Klik tombol ambil lokasi / izinkan akses lokasi terlebih dahulu.');
             }
+            if (currentGPSSuspicious) {
+                return showAlert('<b>Terindikasi Fake GPS/Mock Location!</b> Akurasi lokasi tidak wajar. Nonaktifkan aplikasi fake GPS lalu coba lagi memakai GPS asli perangkat.');
+            }
+
+            const btnAbsenEl = document.getElementById(tipe === 'Masuk' ? 'btnAbsenMasuk' : 'btnAbsenPulang');
+            if (btnAbsenEl) { btnAbsenEl.disabled = true; btnAbsenEl.dataset.originalHtml = btnAbsenEl.innerHTML; btnAbsenEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Memvalidasi lokasi...'; }
+
+            let serverResult;
+            try {
+                const res = await fetch(`${API_BASE_URL}/absen_submit.php`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUser.id,
+                        nama: currentUser.nama,
+                        jabatan: currentUser.jabatan,
+                        tipe: tipe,
+                        lat: currentLat,
+                        lng: currentLng,
+                        accuracy: currentGPSAccuracy
+                    })
+                });
+                serverResult = await res.json();
+            } catch (err) {
+                if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
+                return showAlert('<b>Gagal terhubung ke server validasi lokasi.</b> Periksa koneksi internet Anda lalu coba lagi.', 'error');
+            }
+
+            if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
+
+            if (!serverResult.success) {
+                return showAlert(`<b>${serverResult.message}</b>`, 'error');
+            }
+            // serverResult.data berisi jarak & nama kantor versi resmi (dari server) —
+            // dipakai untuk pencatatan lokal di bawah supaya konsisten dengan audit di database.
+            currentGPSDistance = serverResult.data && serverResult.data.jarak !== undefined ? serverResult.data.jarak : currentGPSDistance;
+            const kantorTervalidasi = serverResult.data ? serverResult.data.kantor : (currentNearestOffice ? currentNearestOffice.office.nama : null);
 
             const now = new Date();
             const todayStr = now.toISOString().split('T')[0];
@@ -1007,7 +1123,13 @@
                     waktuMasuk: waktuStr,
                     waktuPulang: '-',
                     tanggal: todayStr,
-                    lokasi: currentGPS
+                    lokasi: currentGPS,
+                    gpsLat: currentLat,
+                    gpsLng: currentLng,
+                    gpsAccuracy: currentGPSAccuracy,
+                    jarakMeter: currentGPSDistance,
+                    kantorNama: kantorTervalidasi,
+                    kantorId: currentNearestOffice ? currentNearestOffice.office.id : null
                 };
 
                 absensiLogs.unshift(newLog);
@@ -1279,25 +1401,75 @@
             showAlert(`Surat dokter dari <b>${log.nama}</b> telah <b>${keputusan}</b>.`, keputusan === 'Disetujui' ? 'success' : 'error');
         }
 
-        // ================== PENGATURAN LOKASI KANTOR (ADMIN, GEOFENCING) ==================
-        function renderLokasiKantorForm() {
+        // ================== PENGATURAN LOKASI KANTOR/CABANG (ADMIN, GEOFENCING MULTI-LOKASI) ==================
+        let editingOfficeId = null; // null = mode tambah baru, isi id = mode edit kantor tsb
+
+        async function renderLokasiKantorForm() {
+            await loadOfficeLocationsFromServer(); // selalu ambil data terbaru dari database
+            renderLokasiKantorList();
+            resetFormKantor();
+        }
+
+        function renderLokasiKantorList() {
+            const listEl = document.getElementById('kantorListBody');
+            const statusEl = document.getElementById('kantorStatusInfo');
+            if (!listEl || !statusEl) return;
+
+            if (officeLocations.length === 0) {
+                statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-600 mr-1"></i>Belum ada kantor/cabang yang diatur. Selama belum ada, validasi jarak GPS saat absen tidak aktif (karyawan bisa absen dari mana saja).`;
+            } else {
+                statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><b>${officeLocations.length}</b> kantor/cabang terdaftar. Karyawan otomatis divalidasi terhadap kantor terdekat dari daftar ini.`;
+            }
+
+            listEl.innerHTML = officeLocations.map(o => `
+                <tr class="border-b border-slate-100">
+                    <td class="py-2 px-3">
+                        <div class="font-semibold text-slate-700">${o.nama}</div>
+                        <div class="text-slate-400">${o.alamat || '-'}</div>
+                    </td>
+                    <td class="py-2 px-3 whitespace-nowrap">${o.lat.toFixed(5)}, ${o.lng.toFixed(5)}</td>
+                    <td class="py-2 px-3 whitespace-nowrap">${o.radius} m</td>
+                    <td class="py-2 px-3 text-right whitespace-nowrap">
+                        <button type="button" onclick="editKantor('${o.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button type="button" onclick="hapusLokasiKantor('${o.id}')" class="text-red-600 hover:text-red-800" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+                    </td>
+                </tr>
+            `).join('') || `<tr><td colspan="4" class="py-4 text-center text-slate-400">Belum ada data kantor.</td></tr>`;
+        }
+
+        function resetFormKantor() {
+            editingOfficeId = null;
+            const namaEl = document.getElementById('kantorNama');
+            const alamatEl = document.getElementById('kantorAlamat');
             const latEl = document.getElementById('kantorLat');
             const lngEl = document.getElementById('kantorLng');
             const radiusEl = document.getElementById('kantorRadius');
-            const statusEl = document.getElementById('kantorStatusInfo');
-            if (!latEl || !lngEl || !radiusEl || !statusEl) return;
+            if (!namaEl) return;
+            namaEl.value = '';
+            alamatEl.value = '';
+            latEl.value = '';
+            lngEl.value = '';
+            radiusEl.value = 100;
+            const btnSubmit = document.getElementById('btnSubmitKantor');
+            if (btnSubmit) btnSubmit.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i>Tambah Kantor';
+            const btnBatal = document.getElementById('btnBatalEditKantor');
+            if (btnBatal) btnBatal.classList.add('hidden');
+        }
 
-            if (officeLocation) {
-                latEl.value = officeLocation.lat;
-                lngEl.value = officeLocation.lng;
-                radiusEl.value = officeLocation.radius;
-                statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Lokasi kantor aktif: <b>${officeLocation.lat.toFixed(5)}, ${officeLocation.lng.toFixed(5)}</b> &mdash; radius <b>${officeLocation.radius} meter</b>. Karyawan di luar radius ini akan ditolak saat mencoba absen.`;
-            } else {
-                latEl.value = '';
-                lngEl.value = '';
-                radiusEl.value = 100;
-                statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-600 mr-1"></i>Lokasi kantor <b>belum diatur</b>. Selama belum diatur, validasi jarak GPS saat absen tidak aktif (karyawan bisa absen dari mana saja).`;
-            }
+        function editKantor(id) {
+            const office = officeLocations.find(o => String(o.id) === String(id));
+            if (!office) return;
+            editingOfficeId = id;
+            document.getElementById('kantorNama').value = office.nama;
+            document.getElementById('kantorAlamat').value = office.alamat || '';
+            document.getElementById('kantorLat').value = office.lat;
+            document.getElementById('kantorLng').value = office.lng;
+            document.getElementById('kantorRadius').value = office.radius;
+            const btnSubmit = document.getElementById('btnSubmitKantor');
+            if (btnSubmit) btnSubmit.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i>Update Kantor';
+            const btnBatal = document.getElementById('btnBatalEditKantor');
+            if (btnBatal) btnBatal.classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // Bantu Admin mengisi form: ambil koordinat GPS Admin saat ini (dipakai saat Admin sedang berada di kantor)
@@ -1310,37 +1482,79 @@
                     document.getElementById('kantorLat').value = pos.coords.latitude.toFixed(6);
                     document.getElementById('kantorLng').value = pos.coords.longitude.toFixed(6);
                     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-location-crosshairs mr-1"></i>Ambil Lokasi Saat Ini'; }
-                    showAlert('Koordinat lokasi Anda saat ini berhasil diambil. Pastikan Anda sedang benar-benar berada di lokasi kantor, lalu klik "Simpan Lokasi Kantor".', 'success');
+                    showAlert('Koordinat lokasi Anda saat ini berhasil diambil. Pastikan Anda sedang benar-benar berada di lokasi kantor, lalu klik "Simpan".', 'success');
                 },
                 err => {
                     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-location-crosshairs mr-1"></i>Ambil Lokasi Saat Ini'; }
                     showAlert('Gagal mengambil lokasi GPS. Pastikan izin lokasi browser sudah diizinkan.', 'error');
-                }
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
         }
 
-        function saveLokasiKantor(e) {
+        async function saveLokasiKantor(e) {
             e.preventDefault();
+            const nama = document.getElementById('kantorNama').value.trim();
+            const alamat = document.getElementById('kantorAlamat').value.trim();
             const lat = parseFloat(document.getElementById('kantorLat').value);
             const lng = parseFloat(document.getElementById('kantorLng').value);
             const radius = parseInt(document.getElementById('kantorRadius').value, 10);
 
+            if (!nama) return showAlert('Nama kantor/cabang wajib diisi.');
             if (isNaN(lat) || lat < -90 || lat > 90) return showAlert('Latitude tidak valid (harus di antara -90 sampai 90).');
             if (isNaN(lng) || lng < -180 || lng > 180) return showAlert('Longitude tidak valid (harus di antara -180 sampai 180).');
-            if (isNaN(radius) || radius < 10) return showAlert('Radius toleransi minimal 10 meter.');
+            if (isNaN(radius) || radius < 10) return showAlert('Radius maksimal absen minimal 10 meter.');
 
-            officeLocation = { lat, lng, radius };
-            saveOfficeLocationToStorage();
-            renderLokasiKantorForm();
-            showAlert(`Lokasi kantor berhasil disimpan (radius ${radius} meter). Validasi jarak GPS saat absen sekarang aktif untuk seluruh karyawan.`, 'success');
+            const btnSubmit = document.getElementById('btnSubmitKantor');
+            if (btnSubmit) { btnSubmit.disabled = true; }
+
+            try {
+                const isEdit = !!editingOfficeId;
+                const res = await fetch(`${API_BASE_URL}/office_locations.php`, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(isEdit
+                        ? { id: editingOfficeId, nama, alamat, lat, lng, radius }
+                        : { nama, alamat, lat, lng, radius })
+                });
+                const json = await res.json();
+                if (!json.success) {
+                    if (btnSubmit) btnSubmit.disabled = false;
+                    return showAlert(json.message || 'Gagal menyimpan data kantor.', 'error');
+                }
+                showAlert(json.message, 'success');
+                await loadOfficeLocationsFromServer();
+                resetFormKantor();
+                renderLokasiKantorList();
+            } catch (err) {
+                showAlert('<b>Gagal terhubung ke server.</b> Pastikan backend PHP aktif dan API_BASE_URL sudah benar.', 'error');
+            } finally {
+                if (btnSubmit) btnSubmit.disabled = false;
+            }
         }
 
-        function hapusLokasiKantor() {
-            if (!officeLocation) return;
-            officeLocation = null;
-            saveOfficeLocationToStorage();
-            renderLokasiKantorForm();
-            showAlert('Lokasi kantor dihapus. Validasi jarak GPS saat absen dinonaktifkan sementara.', 'success');
+        async function hapusLokasiKantor(id) {
+            const office = officeLocations.find(o => String(o.id) === String(id));
+            if (!office) return;
+            if (!confirm(`Hapus kantor "${office.nama}"?`)) return;
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/office_locations.php`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                const json = await res.json();
+                if (!json.success) {
+                    return showAlert(json.message || 'Gagal menghapus kantor.', 'error');
+                }
+                await loadOfficeLocationsFromServer();
+                if (String(editingOfficeId) === String(id)) resetFormKantor();
+                renderLokasiKantorList();
+                showAlert(json.message, 'success');
+            } catch (err) {
+                showAlert('<b>Gagal terhubung ke server.</b> Pastikan backend PHP aktif dan API_BASE_URL sudah benar.', 'error');
+            }
         }
 
         // ================== MASTER DATA: TABEL JAM KERJA / SHIFT ==================
