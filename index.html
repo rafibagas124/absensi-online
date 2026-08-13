@@ -2,8 +2,22 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Sistem Absensi Online - Multi-Role</title>
+
+    <!-- ======== PWA: manifest & ikon (WAJIB agar bisa "Install App" / "Add to Home Screen") ======== -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
+    <!-- Dukungan "Add to Home Screen" khusus Safari/iOS (iOS tidak baca manifest.json sepenuhnya) -->
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AbsensiPro">
+    <!-- Dukungan PWA di Chrome Android lama -->
+    <meta name="mobile-web-app-capable" content="yes">
+
     <!-- Proteksi frontend dasar (anti klik-kanan / anti devtools) -->
     <script src="./protect.js"></script>
     <!-- Tailwind CSS CDN -->
@@ -1285,5 +1299,14 @@
 
     <!-- JAVASCRIPT LOGIC -->
     <script src="./app.js"></script>
+    <!-- ======== PWA: registrasi Service Worker (agar bisa di-install & tetap terbuka saat offline) ======== -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .catch((err) => console.warn('Service Worker gagal didaftarkan:', err));
+            });
+        }
+    </script>
 </body>
 </html>
