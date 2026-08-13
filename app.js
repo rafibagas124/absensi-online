@@ -1,3 +1,17 @@
+// ================== SIDEBAR MOBILE (BUKA/TUTUP) ==================
+function toggleSidebar(show) {
+    const sidebar = document.getElementById('appSidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    if (!sidebar || !overlay) return;
+    if (show) {
+        sidebar.classList.remove('-translate-x-full');
+        overlay.classList.remove('hidden');
+    } else {
+        sidebar.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+    }
+}
+
 // ================== KONFIGURASI BACKEND PHP (GEOFENCING SERVER-SIDE) ==================
         // Ganti sesuai lokasi folder backend-php/ Anda di-host, contoh:
         // 'https://domainanda.com/backend-php' atau '/backend-php' kalau 1 domain dengan frontend.

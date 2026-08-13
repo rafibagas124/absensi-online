@@ -396,8 +396,23 @@
     <!-- ======================= APP LAYOUT (SIDEBAR + KONTEN, SETELAH LOGIN) ======================= -->
     <div id="appWrapper" class="hidden min-h-screen w-full">
 
+        <!-- TOPBAR MOBILE (hanya tampil di layar kecil) -->
+        <div class="no-print md:hidden fixed top-0 left-0 right-0 h-14 bg-slate-900 text-white flex items-center justify-between px-4 z-30">
+            <button id="btnOpenSidebar" onclick="toggleSidebar(true)" class="p-2 -ml-2 text-xl">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-circle-check text-blue-500"></i>
+                <span class="font-bold text-sm">AbsensiPro</span>
+            </div>
+            <div class="w-8"></div>
+        </div>
+
+        <!-- OVERLAY GELAP SAAT SIDEBAR TERBUKA DI MOBILE -->
+        <div id="sidebarOverlay" onclick="toggleSidebar(false)" class="no-print hidden fixed inset-0 bg-black/50 z-30 md:hidden"></div>
+
         <!-- SIDEBAR KIRI -->
-        <aside class="no-print fixed inset-y-0 left-0 w-60 bg-slate-900 text-slate-300 flex flex-col z-40">
+        <aside id="appSidebar" class="no-print fixed inset-y-0 left-0 w-60 bg-slate-900 text-slate-300 flex flex-col z-40 -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
             <div class="flex items-center gap-2 px-5 py-5 border-b border-white/10">
                 <i class="fa-solid fa-circle-check text-blue-500 text-xl"></i>
                 <span class="font-bold text-white text-base">AbsensiPro</span>
@@ -405,31 +420,31 @@
             </div>
 
             <nav class="flex-1 overflow-y-auto py-3 text-sm">
-                <button id="btnTabAbsen" onclick="switchMainTab('absen')" class="sidebar-link w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                <button id="btnTabAbsen" onclick="switchMainTab('absen'); toggleSidebar(false)" class="sidebar-link w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-camera w-4"></i> Presensi Saya
                 </button>
-                <button id="btnTabPanel" onclick="switchMainTab('panel')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                <button id="btnTabPanel" onclick="switchMainTab('panel'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i id="lblTabPanelIcon" class="fa-solid fa-chart-line w-4"></i> <span id="lblTabPanelText">Panel Kontrol</span>
                 </button>
-                <button id="btnTabVerifikasi" onclick="switchMainTab('verifikasi')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                <button id="btnTabVerifikasi" onclick="switchMainTab('verifikasi'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-file-medical w-4"></i> Verifikasi Surat
                     <span id="badgeSuratPending" class="hidden ml-auto bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span>
                 </button>
 
                 <p id="masterDataLabel" class="hidden px-5 pt-5 pb-1 text-[10px] font-bold uppercase text-slate-500 tracking-wider">Master Data</p>
-                <button id="btnTabShiftMaster" onclick="switchMainTab('shiftmaster')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                <button id="btnTabShiftMaster" onclick="switchMainTab('shiftmaster'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-business-time w-4"></i> Jam Kerja / Shift
                 </button>
-                <button id="btnTabUsers" onclick="switchMainTab('users')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                <button id="btnTabUsers" onclick="switchMainTab('users'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-users w-4"></i> Staff
                 </button>
-                <button id="btnTabLokasi" onclick="switchMainTab('lokasikantor')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                <button id="btnTabLokasi" onclick="switchMainTab('lokasikantor'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-location-dot w-4"></i> Lokasi Kantor
                 </button>
-                <button id="btnTabKalender" onclick="switchMainTab('kalender')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                <button id="btnTabKalender" onclick="switchMainTab('kalender'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-calendar-days w-4"></i> Kalender Izin
                 </button>
-                <button id="btnTabPassReq" onclick="switchMainTab('passreq')" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                <button id="btnTabPassReq" onclick="switchMainTab('passreq'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-key w-4"></i> Permintaan Password
                     <span id="badgePwReqPending" class="hidden ml-auto bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span>
                 </button>
@@ -445,7 +460,7 @@
         </aside>
 
         <!-- KONTEN UTAMA -->
-        <main class="ml-60 min-h-screen flex flex-col">
+        <main class="ml-0 md:ml-60 pt-14 md:pt-0 min-h-screen flex flex-col">
             <div class="px-6 pt-6">
                 <div id="globalAlertApp" class="hidden mb-4 p-4 rounded-lg text-sm font-medium transition-all no-print"></div>
             </div>
