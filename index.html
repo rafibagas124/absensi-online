@@ -570,7 +570,7 @@
 
                     <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI akan memindai wajah, oklusi (wajah tertutup), dan kondisi cahaya secara live sebelum absen bisa dikirim.</p>
 
-                    <div class="mt-4 flex flex-wrap gap-2">
+                    <div class="mt-4 flex flex-wrap gap-2 items-center">
                         <button id="btnOpenCamera" onclick="startCamera()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
                             <i class="fa-solid fa-video mr-1"></i> Buka Kamera
                         </button>
@@ -583,13 +583,15 @@
                         <button type="button" id="btnToggleManualGPS" onclick="toggleManualGPS()" class="bg-slate-600 hover:bg-slate-700 text-white text-xs px-3 py-2.5 rounded-lg font-medium transition">
                             <i class="fa-solid fa-keyboard mr-1"></i> Input Manual
                         </button>
-                        
+
                         <!-- TOMBOL ABSEN MASUK & PULANG -->
-                        <div class="ml-auto flex gap-2">
-                            <button onclick="submitAbsen('Masuk')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition">
+                        <!-- Mobile (<640px): full width, grid 2 kolom sama besar & sejajar -->
+                        <!-- Desktop (>=640px): kembali jadi flex, nempel rapi di kanan (sejajar tombol lain) -->
+                        <div class="w-full grid grid-cols-2 gap-2 mt-2 sm:mt-0 sm:w-auto sm:flex sm:ml-auto">
+                            <button onclick="submitAbsen('Masuk')" class="flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition">
                                 <i class="fa-solid fa-right-to-bracket mr-1"></i> Absen Masuk
                             </button>
-                            <button onclick="submitAbsen('Pulang')" class="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition">
+                            <button onclick="submitAbsen('Pulang')" class="flex items-center justify-center bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2.5 rounded-lg font-bold transition">
                                 <i class="fa-solid fa-right-from-bracket mr-1"></i> Absen Pulang
                             </button>
                         </div>
