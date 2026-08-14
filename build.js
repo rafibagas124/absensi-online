@@ -28,6 +28,7 @@ const FILES = {
   app: 'app.js',
   protect: 'protect.js',
   serviceWorker: 'service-worker.js',
+  i18n: 'i18n.js',
 };
 
 // ---------------------------------------------------------------------------
@@ -104,7 +105,8 @@ function main() {
   if (fs.existsSync(iconsDir)) {
     fs.cpSync(iconsDir, path.join(DIST_DIR, FILES.icons), { recursive: true });
   }
-  console.log('2. index.html, manifest.json, icons/ disalin');
+  fs.copyFileSync(path.join(ROOT_DIR, FILES.i18n), path.join(DIST_DIR, FILES.i18n));
+  console.log('2. index.html, manifest.json, icons/, i18n.js disalin');
 
   // 3. Obfuscate app.js & protect.js (proteksi tinggi)
   console.log('3. Meng-obfuscate JavaScript (proteksi tinggi)...');
