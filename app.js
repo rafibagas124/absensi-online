@@ -219,7 +219,9 @@ function toggleSidebar(show) {
             const el = document.getElementById(appVisible ? 'globalAlertApp' : 'globalAlert');
             el.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-emerald-100', 'text-emerald-700', 'border-red-300', 'border-emerald-300');
             el.classList.add(type === 'error' ? 'bg-red-100' : 'bg-emerald-100', type === 'error' ? 'text-red-700' : 'text-emerald-700', 'border', type === 'error' ? 'border-red-300' : 'border-emerald-300');
-            el.innerHTML = msg;
+            // Semua pesan alert otomatis melewati penerjemah i18n (lihat i18n.js -> translateText).
+            // Jika bahasa aktif "id" atau frasa belum ada di kamus EN, teks tetap tampil apa adanya.
+            el.innerHTML = (typeof translateText === 'function') ? translateText(msg) : msg;
             setTimeout(() => el.classList.add('hidden'), 5000);
         }
 
@@ -692,7 +694,7 @@ function toggleSidebar(show) {
             const devCode = document.getElementById('otpDevCode');
             const sendBtn = document.querySelector('#regStep4 button[type="submit"]');
 
-            const waktuKedaluwarsa = new Date(otpExpireAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+            const waktuKedaluwarsa = new Date(otpExpireAt).toLocaleTimeString(appLocale(), { hour: '2-digit', minute: '2-digit' });
 
             if (typeof emailjs === 'undefined') {
                 // Fallback kalau SDK EmailJS gagal dimuat (mis. tidak ada internet) -> tampilkan mode demo agar tetap bisa diuji
@@ -972,7 +974,7 @@ function toggleSidebar(show) {
 
         function updateOverlayTime() {
             const el = document.getElementById('ovTime');
-            if(el) { el.innerHTML = `<i class="fa-solid fa-clock mr-1"></i>${new Date().toLocaleTimeString('id-ID')}`; }
+            if(el) { el.innerHTML = `<i class="fa-solid fa-clock mr-1"></i>${new Date().toLocaleTimeString(appLocale())}`; }
         }
 
         // Menerapkan hasil koordinat (baik dari GPS otomatis maupun input manual) ke state
@@ -1158,7 +1160,7 @@ function toggleSidebar(show) {
             const todayStr = now.toISOString().split('T')[0];
             const jamNow = now.getHours();
             const menitNow = now.getMinutes();
-            const waktuStr = now.toLocaleTimeString('id-ID');
+            const waktuStr = now.toLocaleTimeString(appLocale());
             const shiftCfg = getShiftConfig(currentUser); // Jam masuk/pulang mengikuti shift staff (Pagi/Siang), total tetap 8 jam
 
             // Cari apakah user sudah pernah absen hari ini
@@ -1303,7 +1305,7 @@ function toggleSidebar(show) {
                 jabatan: currentUser.jabatan,
                 tglMasuk: currentUser.tglMasuk,
                 status: jenis,
-                waktuMasuk: now.toLocaleTimeString('id-ID'),
+                waktuMasuk: now.toLocaleTimeString(appLocale()),
                 waktuPulang: '-',
                 tanggal: jenis === 'Izin' ? tglMulai : todayStr,
                 tanggalSelesai: jenis === 'Izin' ? tglSelesai : null,
@@ -1318,8 +1320,9 @@ function toggleSidebar(show) {
 
             absensiLogs.unshift(newLog);
             saveLogsToStorage();
-            const kategoriMsg = kategoriIzin ? ` (${KATEGORI_IZIN_LABEL[kategoriIzin] || kategoriIzin}, ${jumlahHari} hari)` : '';
-            showAlert(`Pengajuan ${jenis}${kategoriMsg} berhasil dikirim!` + (suratDokter ? ' Surat dokter akan diverifikasi HRD/Admin.' : ''), 'success');
+            const kategoriMsg = kategoriIzin ? ` (${t(KATEGORI_IZIN_LABEL[kategoriIzin] || kategoriIzin)}, ${jumlahHari} ${t('hari')})` : '';
+            const jenisLabel = { Izin: t('Izin'), Sakit: t('Sakit'), Hadir: t('Hadir') }[jenis] || jenis;
+            showAlert(`${t('Pengajuan')} ${jenisLabel}${kategoriMsg} ${t('berhasil dikirim!')}` + (suratDokter ? ' ' + t('Surat dokter akan diverifikasi HRD/Admin.') : ''), 'success');
             fileInput.value = '';
             document.getElementById('alasanIzin').value = '';
             renderMyStats();
@@ -1758,8 +1761,8 @@ function toggleSidebar(show) {
         function roleLabel(role) {
             if (role === 'admin') return 'Admin';
             if (role === 'hrd') return 'HRD';
-            if (role === 'magang') return 'Magang / PKL';
-            return 'Staff';
+            if (role === 'magang') return t('Magang / PKL');
+            return t('Staff');
         }
 
         // ================== STATISTIK HARIAN (MONITORING DAFTAR KARYAWAN) ==================
@@ -2065,7 +2068,7 @@ function toggleSidebar(show) {
 
             const year = viewDate.getFullYear();
             const month = viewDate.getMonth();
-            const bulanNama = viewDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+            const bulanNama = viewDate.toLocaleDateString(appLocale(), { month: 'long', year: 'numeric' });
             label.innerText = bulanNama;
 
             const firstDay = new Date(year, month, 1);
@@ -2082,7 +2085,7 @@ function toggleSidebar(show) {
                 const todayStr = new Date().toISOString().split('T')[0];
                 const isToday = dateStr === todayStr;
                 const matches = izinLogs.filter(l => izinCoversDate(l, dateStr));
-                const badges = matches.slice(0, 2).map(l => `<span class="block truncate text-[9px] bg-amber-100 text-amber-800 rounded px-1 py-0.5 mt-0.5" title="${l.nama} - ${KATEGORI_IZIN_LABEL[l.kategoriIzin] || 'Izin'}">${l.nama.split(' ')[0]}</span>`).join('');
+                const badges = matches.slice(0, 2).map(l => `<span class="block truncate text-[9px] bg-amber-100 text-amber-800 rounded px-1 py-0.5 mt-0.5" title="${l.nama} - ${t(KATEGORI_IZIN_LABEL[l.kategoriIzin] || 'Izin')}">${l.nama.split(' ')[0]}</span>`).join('');
                 const more = matches.length > 2 ? `<span class="block text-[9px] text-slate-400">+${matches.length - 2} lagi</span>` : '';
                 html += `
                     <div class="p-1 min-h-[64px] rounded-lg border ${isToday ? 'border-blue-400 bg-blue-50' : 'border-slate-100'}">
@@ -2102,13 +2105,13 @@ function toggleSidebar(show) {
                 .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
 
             if (relevantLogs.length === 0) {
-                listBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400 italic">Tidak ada pengajuan izin/cuti pada bulan ini.</td></tr>`;
+                listBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400 italic">${t('Tidak ada pengajuan izin/cuti pada bulan ini.')}</td></tr>`;
                 return;
             }
             listBody.innerHTML = relevantLogs.map(l => `
                 <tr class="hover:bg-slate-50">
                     <td class="p-3 font-semibold text-slate-700">${l.nama}<br><span class="text-[10px] text-slate-400">${l.jabatan}</span></td>
-                    <td class="p-3"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">${KATEGORI_IZIN_LABEL[l.kategoriIzin] || 'Izin'}</span></td>
+                    <td class="p-3"><span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">${t(KATEGORI_IZIN_LABEL[l.kategoriIzin] || 'Izin')}</span></td>
                     <td class="p-3">${l.tanggal}${l.tanggalSelesai && l.tanggalSelesai !== l.tanggal ? ' s/d ' + l.tanggalSelesai : ''}</td>
                     <td class="p-3 font-bold text-slate-700">${l.jumlahHari || 1} hari</td>
                     <td class="p-3 text-slate-500 italic">${(l.lokasi || '').replace('Keterangan: ', '')}</td>
@@ -2138,7 +2141,7 @@ function toggleSidebar(show) {
                 l.nama,
                 l.userId,
                 l.jabatan,
-                KATEGORI_IZIN_LABEL[l.kategoriIzin] || 'Izin',
+                t(KATEGORI_IZIN_LABEL[l.kategoriIzin] || 'Izin'),
                 l.tanggal,
                 l.tanggalSelesai || l.tanggal,
                 l.jumlahHari || 1,
@@ -2148,7 +2151,7 @@ function toggleSidebar(show) {
             const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            const bulanFile = kalenderViewDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }).replace(/\s+/g, '-');
+            const bulanFile = kalenderViewDate.toLocaleDateString(appLocale(), { month: 'long', year: 'numeric' }).replace(/\s+/g, '-');
             a.href = url;
             a.download = `Kalender-Izin-Cuti-${bulanFile}.csv`;
             document.body.appendChild(a);
@@ -2212,11 +2215,23 @@ function toggleSidebar(show) {
             if (!infoEl) return;
             if (jenis === 'Izin' && kategori === 'cuti' && currentUser) {
                 const info = getSisaCuti(currentUser);
-                infoEl.innerText = `Sisa jatah cuti tahunan Anda: ${info.sisa} dari ${info.jatah} hari.`;
+                infoEl.innerText = `${t('Sisa jatah cuti tahunan Anda:')} ${info.sisa} ${t('dari')} ${info.jatah} ${t('hari')}.`;
                 infoEl.classList.remove('hidden');
             } else {
                 infoEl.classList.add('hidden');
             }
+        }
+
+        // Dipanggil otomatis oleh i18n.js (setLanguage) setiap kali user mengganti bahasa,
+        // supaya bagian yang sudah ter-render (kalender, statistik, tabel) langsung
+        // ikut berubah bahasa tanpa perlu reload halaman.
+        function onLanguageChanged() {
+            if (!currentUser) return;
+            if (typeof renderMyStats === 'function') renderMyStats();
+            if (typeof renderIzinCalendar === 'function') renderIzinCalendar('kalender', kalenderViewDate, true);
+            if (typeof updateCutiInfoForm === 'function') updateCutiInfoForm();
+            if (typeof renderTable === 'function') { try { renderTable(); } catch (e) {} }
+            if (typeof renderTodayStats === 'function') { try { renderTodayStats(); } catch (e) {} }
         }
 
         function showForgotPasswordModal() { document.getElementById('forgotModal').classList.remove('hidden'); }
