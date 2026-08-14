@@ -452,6 +452,10 @@ function toggleSidebar(show) {
             renderMyStats();
             renderMyPasswordCard();
             renderIzinCalendar('timKalender', timKalenderViewDate, false);
+            // Pastikan field Kategori Izin & Tanggal Mulai/Selesai langsung tampil
+            // sesuai pilihan default dropdown "Jenis Keterangan" (bug: sebelumnya
+            // baru muncul setelah user mengubah pilihan secara manual).
+            toggleUploadSurat();
         }
 
         function switchMainTab(tab) {
