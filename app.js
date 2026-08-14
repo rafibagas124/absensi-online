@@ -451,7 +451,6 @@ function toggleSidebar(show) {
 
             renderMyStats();
             renderMyPasswordCard();
-            renderIzinCalendar('timKalender', timKalenderViewDate, false);
             // Pastikan field Kategori Izin & Tanggal Mulai/Selesai langsung tampil
             // sesuai pilihan default dropdown "Jenis Keterangan" (bug: sebelumnya
             // baru muncul setelah user mengubah pilihan secara manual).
@@ -2040,7 +2039,6 @@ function toggleSidebar(show) {
 
         // ================== KALENDER IZIN / CUTI (ADMIN & HRD, JUGA VERSI RINGKAS UNTUK STAFF) ==================
         let kalenderViewDate = new Date();    // kalender lengkap (tab Admin/HRD)
-        let timKalenderViewDate = new Date(); // kalender ringkas (tab Presensi Saya, semua role)
 
         function izinCoversDate(log, dateStr) {
             if (log.status !== 'Izin') return false;
@@ -2052,11 +2050,6 @@ function toggleSidebar(show) {
         function kalenderChangeMonth(delta) {
             kalenderViewDate.setMonth(kalenderViewDate.getMonth() + delta);
             renderIzinCalendar('kalender', kalenderViewDate, true);
-        }
-
-        function timKalenderChangeMonth(delta) {
-            timKalenderViewDate.setMonth(timKalenderViewDate.getMonth() + delta);
-            renderIzinCalendar('timKalender', timKalenderViewDate, false);
         }
 
         // prefix: 'kalender' (Admin/HRD, lengkap dgn daftar) atau 'timKalender' (semua staff, ringkas)
