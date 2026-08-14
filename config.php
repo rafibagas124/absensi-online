@@ -1,19 +1,44 @@
 <?php
 // ================== KONFIGURASI DATABASE ==================
-// Sesuaikan 4 baris di bawah ini dengan kredensial database MySQL Anda.
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'absensipro');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
-// ================== HEADER CORS & JSON ==================
-// Kalau frontend dan backend PHP di-host di domain berbeda, sesuaikan
-// 'Access-Control-Allow-Origin' dengan domain frontend Anda (bukan '*')
-// supaya lebih aman.
-header('Access-Control-Allow-Origin: *');
+// ================== KONFIGURASI DOMAIN FRONTEND (WAJIB DIISI) ==================
+// Ganti dengan domain frontend production kamu. Untuk dev lokal boleh lebih dari satu.
+$ALLOWED_ORIGINS = [
+    'https://your-frontend-domain.com',
+    'http://localhost:3000',
+];
+
+// ================== SESSION AMAN (dipakai auth.php) ==================
+ini_set('session.cookie_httponly', '1');   // JS tidak bisa baca cookie sesi (anti XSS token theft)
+ini_set('session.cookie_samesite', 'Lax'); // mitigasi CSRF dasar
+ini_set('session.use_strict_mode', '1');
+if (!empty($_SERVER['HTTPS'])) {
+    ini_set('session.cookie_secure', '1'); // cookie hanya lewat HTTPS di production
+}
+session_start();
+
+// ================== HEADER CORS (DIBATASI, BUKAN '*') ==================
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $ALLOWED_ORIGINS, true)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Access-Control-Allow-Credentials: true'); // wajib true agar cookie sesi ikut terkirim
+}
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Content-Type: application/json; charset=utf-8');
+
+// ================== SECURITY HEADERS DASAR (Annex A.13/A.14) ==================
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('Permissions-Policy: geolocation=(self), camera=(self)');
+if (!empty($_SERVER['HTTPS'])) {
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -41,7 +66,6 @@ function getDB(): PDO {
                 ]
             );
         } catch (PDOException $e) {
-            // Jangan bocorkan detail koneksi ke response, cukup log di server.
             error_log('DB connection failed: ' . $e->getMessage());
             jsonResponse(['success' => false, 'message' => 'Koneksi database gagal. Hubungi administrator.'], 500);
         }
@@ -49,9 +73,21 @@ function getDB(): PDO {
     return $pdo;
 }
 
-// Baca body JSON dari request (dipakai oleh POST/PUT/DELETE)
 function readJsonBody(): array {
     $raw = file_get_contents('php://input');
     $data = json_decode($raw, true);
     return is_array($data) ? $data : [];
+}
+
+// ================== GERBANG OTORISASI (Annex A.9) ==================
+// Panggil di baris paling atas endpoint yang butuh login, contoh:
+//   requireAuth();          -> wajib login (role apa saja)
+//   requireAuth(['admin']); -> wajib login DAN role-nya admin
+function requireAuth(array $allowedRoles = []): void {
+    if (empty($_SESSION['user_id'])) {
+        jsonResponse(['success' => false, 'message' => 'Anda belum login.'], 401);
+    }
+    if ($allowedRoles && !in_array($_SESSION['role'], $allowedRoles, true)) {
+        jsonResponse(['success' => false, 'message' => 'Anda tidak punya akses untuk aksi ini.'], 403);
+    }
 }
