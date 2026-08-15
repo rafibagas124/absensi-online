@@ -55,7 +55,9 @@ function toggleSidebar(show) {
         function savePwReqToStorage() { localStorage.setItem('absensi_pwreq', JSON.stringify(passwordRequests)); }
 
         let absensiLogs = JSON.parse(localStorage.getItem('absensi_logs')) || [];
-        let currentUser = JSON.parse(sessionStorage.getItem('absensi_session')) || null;
+        // Sekarang TIDAK dibaca dari sessionStorage lagi -> diisi dari server lewat
+        // restoreSessionFromServer() saat halaman dimuat (lihat DOMContentLoaded di bawah).
+        let currentUser = null;
         let currentGPS = "Lokasi belum didapatkan";
         let currentLat = null;
         let currentLng = null;
@@ -73,7 +75,7 @@ function toggleSidebar(show) {
 
         async function loadOfficeLocationsFromServer() {
             try {
-                const res = await fetch(`${API_BASE_URL}/office_locations.php`);
+                const res = await fetch(`${API_BASE_URL}/office_locations.php`, { credentials: 'include' });
                 const json = await res.json();
                 if (json.success) {
                     officeLocations = json.data.map(o => ({ ...o, lat: parseFloat(o.lat), lng: parseFloat(o.lng), radius: parseInt(o.radius, 10) }));
@@ -188,7 +190,7 @@ function toggleSidebar(show) {
 
         document.addEventListener("DOMContentLoaded", () => {
             saveUsersToStorage();
-            checkSession();
+            restoreSessionFromServer(); // cek sesi login ke server (bukan localStorage/sessionStorage lagi), lalu panggil checkSession()
             loadOfficeLocationsFromServer(); // ambil daftar kantor dari backend PHP (bukan localStorage)
             setInterval(updateOverlayTime, 1000);
             setTimeout(loadFaceModels, 800); // preload model AI di background
@@ -225,75 +227,79 @@ function toggleSidebar(show) {
             setTimeout(() => el.classList.add('hidden'), 5000);
         }
 
-        function handleLogin(e) {
+        // ================== JEMBATAN SEMENTARA: gabungkan profil dari server dengan data
+        // UI-only yang MASIH tersimpan di localStorage (shift, jatah cuti, tglMasuk, izin
+        // ubah password). Ini perlu ada karena fitur manajemen karyawan/shift/cuti belum
+        // dipindah ke backend (lihat catatan di ringkasan chat) -- begitu fitur itu sudah
+        // dipindah ke database sungguhan, fungsi ini bisa dihapus.
+        function mergeLocalProfileFields(serverUser) {
+            if (!serverUser) return serverUser;
+            const local = users.find(u =>
+                (serverUser.username && u.username && u.username.toLowerCase() === serverUser.username.toLowerCase()) ||
+                (serverUser.email && u.username && u.username.toLowerCase() === serverUser.email.toLowerCase())
+            );
+            return {
+                ...serverUser,
+                shift: (local && local.shift) || 'pagi',
+                jatahCuti: (local && typeof local.jatahCuti !== 'undefined') ? local.jatahCuti : 12,
+                tglMasuk: (local && local.tglMasuk) || new Date().toISOString().split('T')[0],
+                allowChangePassword: local ? !!local.allowChangePassword : false,
+            };
+        }
+
+        // ================== LOGIN (SEKARANG BENERAN KE SERVER, BUKAN localStorage) ==================
+        // Akun & rate-limiting percobaan gagal sekarang murni ditentukan oleh backend
+        // (auth.php + tabel users/login_attempts di MySQL), supaya akun yang sama bisa
+        // dipakai login dari perangkat MANAPUN, dan supaya lockout tidak bisa dilewati
+        // hanya dengan clear localStorage di browser client.
+        async function handleLogin(e) {
             e.preventDefault();
+            const kodePerusahaan = document.getElementById('loginCompanyCode').value.trim();
             const uInput = document.getElementById('loginUser').value.trim();
-            const pInput = document.getElementById('loginPass').value.trim();
-            if (!uInput || !pInput) return;
+            const pInput = document.getElementById('loginPass').value;
+            if (!kodePerusahaan || !uInput || !pInput) return;
 
-            const secKey = getSecKey(uInput);
-            let sec = loginSecurity[secKey] || { failCount: 0, banUntil: 0, banStage: 0, permaBanned: false };
+            const btnSubmit = e.target.querySelector('button[type="submit"]');
+            if (btnSubmit) { btnSubmit.disabled = true; btnSubmit.dataset.originalHtml = btnSubmit.innerHTML; btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Memeriksa akun...'; }
 
-            // 1. Cek apakah akun dikunci PERMANEN
-            if (sec.permaBanned) {
-                openAccountLockedModal(uInput);
-                return;
+            let result;
+            try {
+                const res = await fetch(`${API_BASE_URL}/auth.php?action=login`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ kode_perusahaan: kodePerusahaan, username: uInput, password: pInput })
+                });
+                result = await res.json();
+            } catch (err) {
+                if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = btnSubmit.dataset.originalHtml; }
+                return showAlert('<b>Gagal terhubung ke server.</b> Pastikan backend PHP aktif dan API_BASE_URL sudah benar.', 'error');
             }
 
-            // 2. Cek apakah sedang dalam masa BANNED sementara
-            const now = Date.now();
-            if (sec.banUntil && sec.banUntil > now) {
-                const sisaDetik = Math.ceil((sec.banUntil - now) / 1000);
-                showAlert(`<b>Akun diblokir sementara!</b> Terlalu banyak percobaan gagal. Coba lagi dalam <b>${sisaDetik} detik</b>.`);
-                return;
+            if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = btnSubmit.dataset.originalHtml; }
+
+            if (!result.success) {
+                return showAlert(`<b>${result.message}</b>`, 'error');
             }
 
-            const found = users.find(u => (u.username === uInput || u.id === uInput) && u.pass === pInput);
+            currentUser = mergeLocalProfileFields(result.data); // { id, nama, jabatan, email, role, must_change_password } + field UI-only dari localStorage
+            showAlert(`Selamat datang kembali, <b>${currentUser.nama}</b>!`, 'success');
+            checkSession();
+        }
 
-            if (found) {
-                // Login berhasil -> reset seluruh riwayat keamanan akun ini
-                delete loginSecurity[secKey];
-                saveSecurity();
-                currentUser = found;
-                sessionStorage.setItem('absensi_session', JSON.stringify(currentUser));
-                showAlert(`Selamat datang kembali, <b>${currentUser.nama}</b>!`, 'success');
-                checkSession();
-                return;
+        // Dipanggil sekali saat halaman dimuat: cek ke server apakah sesi login
+        // (cookie PHP session) masih aktif, supaya refresh halaman tidak selalu
+        // melempar user ke layar login walau sebenarnya masih login.
+        async function restoreSessionFromServer() {
+            try {
+                const res = await fetch(`${API_BASE_URL}/auth.php?action=me`, { credentials: 'include' });
+                if (!res.ok) { currentUser = null; return checkSession(); }
+                const result = await res.json();
+                currentUser = result.success ? mergeLocalProfileFields(result.data) : null;
+            } catch (err) {
+                currentUser = null;
             }
-
-            // Login gagal -> proses eskalasi keamanan
-            const rule = getRuleForUsername(uInput);
-            sec.failCount = (sec.failCount || 0) + 1;
-
-            if (sec.failCount >= rule.maxAttempt) {
-                sec.banStage = (sec.banStage || 0) + 1;
-                sec.failCount = 0;
-
-                if (sec.banStage >= rule.permaAfterStage) {
-                    // Sudah 3x kena banned (khusus role staff) -> kunci permanen
-                    sec.permaBanned = true;
-                    sec.banUntil = 0;
-                    loginSecurity[secKey] = sec;
-                    saveSecurity();
-                    openAccountLockedModal(uInput);
-                    return;
-                } else {
-                    // Waktu banned bertambah setiap kali kena banned lagi (eskalasi)
-                    const durasi = rule.escalate
-                        ? rule.baseBanSeconds * Math.pow(2, sec.banStage - 1)
-                        : rule.baseBanSeconds;
-                    sec.banUntil = now + (durasi * 1000);
-                    loginSecurity[secKey] = sec;
-                    saveSecurity();
-                    showAlert(`<b>Terlalu banyak percobaan gagal (${rule.maxAttempt}x)!</b> Akun diblokir sementara selama <b>${durasi} detik</b>.`);
-                    return;
-                }
-            }
-
-            loginSecurity[secKey] = sec;
-            saveSecurity();
-            const sisaPercobaan = rule.maxAttempt - sec.failCount;
-            showAlert(`Email / Username / Password salah! Sisa percobaan sebelum diblokir: <b>${sisaPercobaan}x</b>.`);
+            checkSession();
         }
 
         // ================== MODAL PEMULIHAN AKUN (BANNED PERMANEN) ==================
@@ -344,8 +350,13 @@ function toggleSidebar(show) {
             showAlert(`Status keamanan login untuk <b>${username}</b> berhasil direset.`, 'success');
         }
 
-        function logout() {
-            sessionStorage.removeItem('absensi_session');
+        async function logout() {
+            try {
+                await fetch(`${API_BASE_URL}/auth.php?action=logout`, { method: 'POST', credentials: 'include' });
+            } catch (err) {
+                // Tetap lanjut logout di sisi client walau request ke server gagal (mis. offline),
+                // supaya user tidak "terjebak" di halaman aplikasi.
+            }
             currentUser = null;
             stopCamera();
             checkSession();
@@ -573,8 +584,10 @@ function toggleSidebar(show) {
                 }
 
                 currentUser = found;
-                sessionStorage.setItem('absensi_session', JSON.stringify(currentUser));
                 showAlert(`Berhasil masuk dengan Google sebagai <b>${currentUser.nama}</b>!`, 'success');
+                // CATATAN: Login Google ini masih memakai akun localStorage lama, BELUM terhubung
+                // ke sesi server (auth.php) atau ke sistem company_id yang baru. Jika dipakai,
+                // fitur absen (yang mewajibkan sesi server) akan gagal untuk user yang masuk lewat sini.
                 checkSession();
             } catch (err) {
                 console.error('Gagal memproses login Google:', err);
@@ -637,25 +650,25 @@ function toggleSidebar(show) {
         function handleRegisterSubmit(e) {
             e.preventDefault();
             const company = document.getElementById('regCompany').value.trim();
+            const companyCode = document.getElementById('regCompanyCode').value.trim().toUpperCase();
             const email = document.getElementById('regEmail').value.trim();
             const pass = document.getElementById('regPassword').value;
             const passConfirm = document.getElementById('regPasswordConfirm').value;
             const wa = document.getElementById('regWhatsapp').value.trim();
 
+            if (!/^[A-Z0-9\-]{3,30}$/.test(companyCode)) { alert('Kode perusahaan harus 3-30 karakter, huruf/angka/strip saja.'); return; }
             if (pass !== passConfirm) { alert('Konfirmasi password tidak cocok.'); return; }
-            const usernameTaken = users.some(u => u.username.toLowerCase() === email.toLowerCase());
-            if (usernameTaken) { alert('Email ini sudah terdaftar, silakan gunakan email lain atau masuk.'); return; }
+            if (pass.length < 8) { alert('Password minimal 8 karakter.'); return; }
 
-            // Simpan data akun sementara -> baru dibuat permanen setelah OTP email terverifikasi
+            // Data akun disimpan sementara di memori -> baru benar-benar dibuat DI SERVER
+            // setelah OTP email terverifikasi (lihat handleVerifyOtp).
             pendingRegistration = {
-                id: "ADM-" + Date.now().toString().slice(-4),
+                nama_perusahaan: company,
+                kode_perusahaan: companyCode,
                 nama: company + " Admin",
-                jabatan: "System Admin",
-                tglMasuk: new Date().toISOString().split('T')[0],
                 username: email,
-                pass: pass,
-                role: "admin",
-                shift: "pagi",
+                email: email,
+                password: pass,
                 bidang: regSelectedBidang,
                 whatsapp: wa
             };
@@ -754,11 +767,12 @@ function toggleSidebar(show) {
             }, 1000);
         }
 
-        function handleVerifyOtp(e) {
+        async function handleVerifyOtp(e) {
             e.preventDefault();
             const digits = Array.from(document.querySelectorAll('#otpInputGroup .otp-digit')).map(el => el.value.trim());
             const inputCode = digits.join('');
             const errEl = document.getElementById('otpErrorMsg');
+            errEl.classList.add('hidden');
 
             if (inputCode.length < 6) {
                 errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Mohon isi seluruh 6 digit kode OTP.';
@@ -775,10 +789,52 @@ function toggleSidebar(show) {
                 errEl.classList.remove('hidden');
                 return;
             }
+            if (!pendingRegistration) {
+                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Sesi pendaftaran hilang, silakan ulangi dari awal.';
+                errEl.classList.remove('hidden');
+                return;
+            }
 
-            // OTP valid -> akun perusahaan baru resmi dibuat
-            users.push(pendingRegistration);
-            saveUsersToStorage();
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.dataset.originalHtml = submitBtn.innerHTML; submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Membuat akun...'; }
+
+            // OTP valid di sisi client -> BARU SEKARANG perusahaan & akun admin
+            // benar-benar dibuat di server (auth.php?action=register), bukan
+            // sekadar push ke array localStorage seperti sebelumnya.
+            let result;
+            try {
+                const res = await fetch(`${API_BASE_URL}/auth.php?action=register`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        kode_perusahaan: pendingRegistration.kode_perusahaan,
+                        nama_perusahaan: pendingRegistration.nama_perusahaan,
+                        nama: pendingRegistration.nama,
+                        username: pendingRegistration.username,
+                        email: pendingRegistration.email,
+                        password: pendingRegistration.password,
+                    })
+                });
+                result = await res.json();
+            } catch (err) {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtn.dataset.originalHtml; }
+                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Gagal terhubung ke server. Periksa koneksi lalu coba lagi.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtn.dataset.originalHtml; }
+
+            if (!result.success) {
+                errEl.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-1"></i>${result.message}`;
+                errEl.classList.remove('hidden');
+                return;
+            }
+
+            const finishCodeEl = document.getElementById('finishCompanyCode');
+            if (finishCodeEl) finishCodeEl.innerText = result.data.kode_perusahaan;
+
             pendingRegistration = null;
             pendingOtpCode = null;
             if (otpResendCooldownTimer) clearInterval(otpResendCooldownTimer);
@@ -1129,17 +1185,20 @@ function toggleSidebar(show) {
             try {
                 const res = await fetch(`${API_BASE_URL}/absen_submit.php`, {
                     method: 'POST',
+                    credentials: 'include', // wajib: identitas & perusahaan diambil dari sesi login di server, bukan dari body ini
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        user_id: currentUser.id,
-                        nama: currentUser.nama,
-                        jabatan: currentUser.jabatan,
                         tipe: tipe,
                         lat: currentLat,
                         lng: currentLng,
                         accuracy: currentGPSAccuracy
                     })
                 });
+                if (res.status === 401) {
+                    // Sesi habis/tidak valid di server -> paksa balik ke layar login supaya user tidak bingung kenapa absen selalu gagal.
+                    logout();
+                    return showAlert('<b>Sesi Anda berakhir.</b> Silakan login kembali untuk absen.', 'error');
+                }
                 serverResult = await res.json();
             } catch (err) {
                 if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
@@ -1628,6 +1687,7 @@ function toggleSidebar(show) {
                 const isEdit = !!editingOfficeId;
                 const res = await fetch(`${API_BASE_URL}/office_locations.php`, {
                     method: isEdit ? 'PUT' : 'POST',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(isEdit
                         ? { id: editingOfficeId, nama, alamat, lat, lng, radius }
@@ -1657,6 +1717,7 @@ function toggleSidebar(show) {
             try {
                 const res = await fetch(`${API_BASE_URL}/office_locations.php`, {
                     method: 'DELETE',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id })
                 });
@@ -1829,7 +1890,6 @@ function toggleSidebar(show) {
             // Jika staff yang shift-nya diubah sedang login di tab ini, sinkronkan tampilannya
             if (currentUser && currentUser.id === u.id) {
                 currentUser.shift = u.shift;
-                sessionStorage.setItem('absensi_session', JSON.stringify(currentUser));
                 setupKaryawanView();
             }
         }
@@ -2202,7 +2262,6 @@ function toggleSidebar(show) {
             showAlert(`Jatah cuti tahunan <b>${u.nama}</b> berhasil diubah menjadi <b>${val} hari</b>.`, 'success');
             if (currentUser && currentUser.id === u.id) {
                 currentUser.jatahCuti = u.jatahCuti;
-                sessionStorage.setItem('absensi_session', JSON.stringify(currentUser));
                 renderMyStats();
             }
         }

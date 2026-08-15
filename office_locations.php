@@ -1,17 +1,21 @@
 <?php
-// ================== ENDPOINT: MANAJEMEN LOKASI KANTOR/CABANG (ADMIN) ==================
-// GET    -> daftar semua kantor
-// POST   -> tambah kantor baru      { nama, alamat, lat, lng, radius }
-// PUT    -> update kantor           { id, nama, alamat, lat, lng, radius }
-// DELETE -> hapus kantor            { id }  (bisa juga ?id=..)
+// ================== ENDPOINT: MANAJEMEN LOKASI KANTOR/CABANG (MULTI-TENANT) ==================
+// GET    -> daftar kantor MILIK PERUSAHAAN YANG SEDANG LOGIN saja
+// POST   -> tambah kantor baru (admin)      { nama, alamat, lat, lng, radius }
+// PUT    -> update kantor (admin)           { id, nama, alamat, lat, lng, radius }
+// DELETE -> hapus kantor (admin)            { id }  (bisa juga ?id=..)
 //
-// CATATAN KEAMANAN: endpoint ini sebaiknya dilindungi otentikasi/session admin
-// sebelum dipakai di production (lihat catatan di README backend).
+// Semua operasi wajib login (requireAuth) dan company_id SELALU diambil dari
+// session (currentCompanyId()), tidak pernah dari input client -- supaya
+// perusahaan A tidak bisa membaca/mengubah/menghapus data kantor milik
+// perusahaan B walau tahu/tebak ID barisnya.
 
 require_once __DIR__ . '/config.php';
 
-$pdo    = getDB();
-$method = $_SERVER['REQUEST_METHOD'];
+requireAuth(); // wajib login untuk lihat daftar kantor
+$pdo       = getDB();
+$companyId = currentCompanyId();
+$method    = $_SERVER['REQUEST_METHOD'];
 
 function validateOfficePayload(array $input): array {
     $errors = [];
@@ -30,17 +34,19 @@ function validateOfficePayload(array $input): array {
 }
 
 if ($method === 'GET') {
-    $stmt = $pdo->query('SELECT id, nama, alamat, lat, lng, radius FROM office_locations ORDER BY nama ASC');
+    $stmt = $pdo->prepare('SELECT id, nama, alamat, lat, lng, radius FROM office_locations WHERE company_id = ? ORDER BY nama ASC');
+    $stmt->execute([$companyId]);
     jsonResponse(['success' => true, 'data' => $stmt->fetchAll()]);
 }
 
 if ($method === 'POST') {
+    requireAuth(['admin', 'hrd']); // hanya admin/hrd yang boleh tambah kantor
     $input = readJsonBody();
     [$errors, $nama, $alamat, $lat, $lng, $radius] = validateOfficePayload($input);
     if ($errors) jsonResponse(['success' => false, 'message' => implode(' ', $errors)], 422);
 
-    $stmt = $pdo->prepare('INSERT INTO office_locations (nama, alamat, lat, lng, radius) VALUES (?, ?, ?, ?, ?)');
-    $stmt->execute([$nama, $alamat, $lat, $lng, $radius]);
+    $stmt = $pdo->prepare('INSERT INTO office_locations (company_id, nama, alamat, lat, lng, radius) VALUES (?, ?, ?, ?, ?, ?)');
+    $stmt->execute([$companyId, $nama, $alamat, $lat, $lng, $radius]);
 
     jsonResponse([
         'success' => true,
@@ -50,6 +56,7 @@ if ($method === 'POST') {
 }
 
 if ($method === 'PUT') {
+    requireAuth(['admin', 'hrd']);
     $input = readJsonBody();
     $id = filter_var($input['id'] ?? null, FILTER_VALIDATE_INT);
     if (!$id) jsonResponse(['success' => false, 'message' => 'ID kantor tidak valid.'], 422);
@@ -57,13 +64,14 @@ if ($method === 'PUT') {
     [$errors, $nama, $alamat, $lat, $lng, $radius] = validateOfficePayload($input);
     if ($errors) jsonResponse(['success' => false, 'message' => implode(' ', $errors)], 422);
 
-    $stmt = $pdo->prepare('UPDATE office_locations SET nama=?, alamat=?, lat=?, lng=?, radius=? WHERE id=?');
-    $stmt->execute([$nama, $alamat, $lat, $lng, $radius, $id]);
+    // WHERE company_id=? memastikan admin Perusahaan A tidak bisa update baris
+    // kantor milik Perusahaan B walau ID-nya ditebak/dikirim manual.
+    $stmt = $pdo->prepare('UPDATE office_locations SET nama=?, alamat=?, lat=?, lng=?, radius=? WHERE id=? AND company_id=?');
+    $stmt->execute([$nama, $alamat, $lat, $lng, $radius, $id, $companyId]);
 
     if ($stmt->rowCount() === 0) {
-        // Bisa jadi ID tidak ketemu, ATAU datanya memang identik dengan sebelumnya — cek dulu.
-        $check = $pdo->prepare('SELECT id FROM office_locations WHERE id=?');
-        $check->execute([$id]);
+        $check = $pdo->prepare('SELECT id FROM office_locations WHERE id=? AND company_id=?');
+        $check->execute([$id, $companyId]);
         if (!$check->fetch()) jsonResponse(['success' => false, 'message' => 'Kantor tidak ditemukan.'], 404);
     }
 
@@ -71,17 +79,18 @@ if ($method === 'PUT') {
 }
 
 if ($method === 'DELETE') {
+    requireAuth(['admin', 'hrd']);
     $input = readJsonBody();
     $id = filter_var($input['id'] ?? ($_GET['id'] ?? null), FILTER_VALIDATE_INT);
     if (!$id) jsonResponse(['success' => false, 'message' => 'ID kantor tidak valid.'], 422);
 
-    $stmt = $pdo->prepare('SELECT nama FROM office_locations WHERE id=?');
-    $stmt->execute([$id]);
+    $stmt = $pdo->prepare('SELECT nama FROM office_locations WHERE id=? AND company_id=?');
+    $stmt->execute([$id, $companyId]);
     $office = $stmt->fetch();
     if (!$office) jsonResponse(['success' => false, 'message' => 'Kantor tidak ditemukan.'], 404);
 
-    $del = $pdo->prepare('DELETE FROM office_locations WHERE id=?');
-    $del->execute([$id]);
+    $del = $pdo->prepare('DELETE FROM office_locations WHERE id=? AND company_id=?');
+    $del->execute([$id, $companyId]);
 
     jsonResponse(['success' => true, 'message' => "Kantor \"{$office['nama']}\" berhasil dihapus."]);
 }

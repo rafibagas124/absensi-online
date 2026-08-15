@@ -16,10 +16,14 @@ function hitungJarakMeter(float $lat1, float $lng1, float $lat2, float $lng2): f
     return $R * $c;
 }
 
-// Cari kantor/cabang TERDEKAT dari titik (lat,lng) di antara seluruh kantor
-// yang terdaftar di database. Mengembalikan null kalau belum ada kantor sama sekali.
-function findNearestOffice(PDO $pdo, float $lat, float $lng): ?array {
-    $offices = $pdo->query('SELECT * FROM office_locations')->fetchAll();
+// Cari kantor/cabang TERDEKAT dari titik (lat,lng) di antara kantor milik
+// SATU perusahaan (company_id) saja -- supaya staff Perusahaan A tidak pernah
+// tervalidasi terhadap lokasi kantor milik Perusahaan B, atau sebaliknya.
+// Mengembalikan null kalau perusahaan itu belum punya kantor sama sekali.
+function findNearestOffice(PDO $pdo, int $companyId, float $lat, float $lng): ?array {
+    $stmt = $pdo->prepare('SELECT * FROM office_locations WHERE company_id = ?');
+    $stmt->execute([$companyId]);
+    $offices = $stmt->fetchAll();
     if (!$offices) return null;
 
     $nearest = null;
