@@ -700,7 +700,7 @@ function toggleSidebar(show) {
             if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = 'Mengirim OTP...'; }
 
             try {
-                const res = await fetch('send_otp.php', {
+                const res = await fetch('/api/send-otp', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
