@@ -195,7 +195,6 @@ function toggleSidebar(show) {
             setInterval(updateOverlayTime, 1000);
             setTimeout(loadFaceModels, 800); // preload model AI di background
             setTimeout(initGoogleSignIn, 500); // tunggu script Google Identity Services siap
-            setTimeout(() => { if (typeof emailjs !== 'undefined') emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY }); }, 500); // init EmailJS untuk pengiriman OTP asli
         });
 
         function saveUsersToStorage() { localStorage.setItem('absensi_users', JSON.stringify(users)); }
@@ -678,26 +677,16 @@ function toggleSidebar(show) {
             sendOtpToEmail(email);
         }
 
-        // ================== VERIFIKASI OTP EMAIL (STEP 4 REGISTRASI) — ASLI VIA EMAILJS ==================
-        // Kredensial EmailJS disamarkan (base64, dipecah) sebagai lapisan tambahan agar tidak langsung terbaca
-        // sebagai teks polos di source code. CATATAN PENTING: ini BUKAN pengaman utama — key EmailJS memang
-        // publik by design. Perlindungan sesungguhnya ada di dashboard EmailJS > Account > Security > Allowed
-        // Origins, dengan mendaftarkan HANYA domain resmi (mis. namamu.vercel.app) yang boleh memakai key ini.
-        const _ej = {
-            a: ['c2Vy', 'dmljZV93', 'cnhmeHFp'],
-            b: ['dGVt', 'cGxhdGVfazQx', 'NmF6OQ=='],
-            c: ['cUxN', 'd0xmZHNla2xF', 'TlhoeXI=']
-        };
-        function _decodeKey(parts) { return atob(parts.join('')); }
-        const EMAILJS_SERVICE_ID = _decodeKey(_ej.a);
-        const EMAILJS_TEMPLATE_ID = _decodeKey(_ej.b);
-        const EMAILJS_PUBLIC_KEY = _decodeKey(_ej.c);
+        // ================== VERIFIKASI OTP EMAIL (STEP 4 REGISTRASI) — VIA RESEND (backend PHP) ==================
+        // Pengiriman TIDAK lagi dilakukan langsung dari browser (seperti EmailJS sebelumnya).
+        // API key Resend adalah secret dan hanya boleh dipakai di server -> lihat send_otp.php.
+        // app.js di sini hanya memanggil endpoint backend tersebut.
 
         function generateOtpCode() {
             return String(Math.floor(100000 + Math.random() * 900000));
         }
 
-        function sendOtpToEmail(email) {
+        async function sendOtpToEmail(email) {
             pendingOtpCode = generateOtpCode();
             otpExpireAt = Date.now() + (5 * 60 * 1000); // berlaku 5 menit
             document.getElementById('otpErrorMsg').classList.add('hidden');
@@ -709,38 +698,37 @@ function toggleSidebar(show) {
 
             const waktuKedaluwarsa = new Date(otpExpireAt).toLocaleTimeString(appLocale(), { hour: '2-digit', minute: '2-digit' });
 
-            if (typeof emailjs === 'undefined') {
-                // Fallback kalau SDK EmailJS gagal dimuat (mis. tidak ada internet) -> tampilkan mode demo agar tetap bisa diuji
-                devNote.classList.remove('hidden');
-                devCode.innerText = pendingOtpCode;
-                showAlert('Layanan pengirim email tidak dapat dimuat. Menampilkan kode OTP sementara di layar (mode cadangan).');
-                startOtpResendCooldown();
-                return;
-            }
-
             devNote.classList.add('hidden');
             if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = 'Mengirim OTP...'; }
 
-            emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-                email: email,
-                passcode: pendingOtpCode,
-                time: waktuKedaluwarsa
-            }, EMAILJS_PUBLIC_KEY)
-            .then(() => {
+            try {
+                const res = await fetch('send_otp.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        otp: pendingOtpCode,
+                        expires_at: waktuKedaluwarsa
+                    })
+                });
+                const result = await res.json();
+
+                if (!res.ok || !result.success) {
+                    throw new Error(result.message || 'Gagal mengirim email OTP.');
+                }
+
                 showAlert(`Kode OTP telah dikirim ke <b>${email}</b>. Cek inbox (atau folder spam) email Anda. Berlaku hingga <b>${waktuKedaluwarsa}</b>.`, 'success');
                 startOtpResendCooldown();
-            })
-            .catch((err) => {
-                console.error('Gagal mengirim OTP via EmailJS:', err);
+            } catch (err) {
+                console.error('Gagal mengirim OTP via Resend:', err);
                 // Fallback: tampilkan kode di layar supaya pendaftaran tetap bisa dilanjutkan meski pengiriman email gagal
                 devNote.classList.remove('hidden');
                 devCode.innerText = pendingOtpCode;
-                showAlert('Gagal mengirim email OTP (periksa koneksi/konfigurasi EmailJS). Kode OTP sementara ditampilkan di layar agar Anda tetap bisa lanjut.');
+                showAlert('Gagal mengirim email OTP (periksa konfigurasi Resend di server). Kode OTP sementara ditampilkan di layar agar Anda tetap bisa lanjut.');
                 startOtpResendCooldown();
-            })
-            .finally(() => {
+            } finally {
                 if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = 'Verifikasi & Selesaikan Pendaftaran'; }
-            });
+            }
         }
 
         function resendOtp() {

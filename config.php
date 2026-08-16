@@ -5,6 +5,15 @@ define('DB_NAME', 'absensipro');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
+// ================== KONFIGURASI RESEND (PENGIRIM EMAIL OTP) ==================
+// PENTING: key ini SECRET (beda dengan public key EmailJS) — jangan pernah taruh di app.js/frontend,
+// dan sebaiknya jangan di-commit ke repo Git publik. Kelola/rotate di https://resend.com/api-keys
+define('RESEND_API_KEY', getenv('RESEND_API_KEY') ?: '');
+// Alamat "from". Selama domain sendiri belum diverifikasi di Resend (Domains > Add Domain),
+// WAJIB pakai onboarding@resend.dev, dan email hanya akan terkirim ke alamat email akun Resend kamu sendiri
+// (batasan mode testing Resend). Setelah domain diverifikasi, ganti ke email dari domainmu sendiri.
+define('RESEND_FROM', 'Absensi App <onboarding@resend.dev>');
+
 // ================== KONFIGURASI DOMAIN FRONTEND (WAJIB DIISI) ==================
 // Ganti dengan domain frontend production kamu. Untuk dev lokal boleh lebih dari satu.
 $ALLOWED_ORIGINS = [
