@@ -692,8 +692,6 @@ function toggleSidebar(show) {
             document.getElementById('otpErrorMsg').classList.add('hidden');
             document.querySelectorAll('.otp-digit').forEach(el => el.value = '');
 
-            const devNote = document.getElementById('otpDevNote');
-            const devCode = document.getElementById('otpDevCode');
             const sendBtn = document.querySelector('#regStep4 button[type="submit"]');
 
             const waktuKedaluwarsa = new Date(otpExpireAt).toLocaleTimeString(appLocale(), { hour: '2-digit', minute: '2-digit' });
@@ -721,11 +719,8 @@ function toggleSidebar(show) {
                 startOtpResendCooldown();
             } catch (err) {
                 console.error('Gagal mengirim OTP via Resend:', err);
-                // Fallback: tampilkan kode di layar supaya pendaftaran tetap bisa dilanjutkan meski pengiriman email gagal
-                devNote.classList.remove('hidden');
-                devCode.innerText = pendingOtpCode;
-                showAlert('Gagal mengirim email OTP (periksa konfigurasi Resend di server). Kode OTP sementara ditampilkan di layar agar Anda tetap bisa lanjut.');
-                startOtpResendCooldown();
+                // Tampilkan pesan error yang informatif — JANGAN expose OTP di layar
+                showAlert('Gagal mengirim email OTP: ' + (err.message || 'Coba beberapa saat lagi atau hubungi administrator.'), 'error');
             } finally {
                 if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = 'Verifikasi & Selesaikan Pendaftaran'; }
             }

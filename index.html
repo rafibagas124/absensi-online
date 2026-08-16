@@ -391,9 +391,7 @@
                             <p class="text-xs text-slate-500 mt-1">Kode OTP 6 digit telah dikirim ke <b id="otpTargetEmail">-</b>. Masukkan kode tersebut untuk melanjutkan.</p>
                         </div>
                         <form onsubmit="handleVerifyOtp(event)" class="p-4 space-y-4">
-                            <div id="otpDevNote" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-[11px] p-2.5 rounded-lg">
-                                <i class="fa-solid fa-circle-info mr-1"></i> Mode demo (belum ada server email): kode OTP Anda adalah <b id="otpDevCode">-</b>.
-                            </div>
+
                             <div class="flex justify-between gap-2" id="otpInputGroup">
                                 <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
                                 <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
