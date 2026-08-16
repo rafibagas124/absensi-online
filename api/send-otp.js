@@ -1,8 +1,12 @@
 // api/send-otp.js
-// Vercel Serverless Function — menggantikan send_otp.php
+// Vercel Serverless Function — kirim OTP via Gmail SMTP (Nodemailer)
 // POST /api/send-otp  { email, otp, expires_at }
-// Mengirim kode OTP ke email via Resend API.
-// API key Resend dibaca dari Environment Variables Vercel (bukan di-hardcode).
+//
+// Setup di Vercel Environment Variables:
+//   GMAIL_USER = emailkamu@gmail.com
+//   GMAIL_APP_PASSWORD = xxxx xxxx xxxx xxxx  (Google App Password, bukan password Gmail biasa)
+
+import nodemailer from 'nodemailer';
 
 export default async function handler(req, res) {
     // Hanya terima POST
@@ -16,16 +20,19 @@ export default async function handler(req, res) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(422).json({ success: false, message: 'Email tidak valid.' });
     }
-    if (!otp || !/^\d{6}$/.test(otp)) {
+    if (!otp || !/^\d{6}$/.test(String(otp))) {
         return res.status(422).json({ success: false, message: 'Kode OTP tidak valid.' });
     }
 
-    const apiKey = process.env.RESEND_API_KEY;
-    const from   = process.env.RESEND_FROM || 'Absensi App <onboarding@resend.dev>';
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
 
-    if (!apiKey) {
-        console.error('RESEND_API_KEY belum dikonfigurasi di Vercel Environment Variables.');
-        return res.status(500).json({ success: false, message: 'Konfigurasi server email belum selesai. Hubungi administrator.' });
+    if (!gmailUser || !gmailPass) {
+        console.error('GMAIL_USER atau GMAIL_APP_PASSWORD belum dikonfigurasi di Vercel Environment Variables.');
+        return res.status(500).json({
+            success: false,
+            message: 'Konfigurasi server email belum selesai. Hubungi administrator.'
+        });
     }
 
     const safeOtp     = String(otp).replace(/[<>&"']/g, '');
@@ -44,38 +51,29 @@ export default async function handler(req, res) {
     <p style="color:#6b7280;font-size:12px;">Jika kamu tidak merasa melakukan pendaftaran ini, abaikan email ini.</p>
 </div>`;
 
-    const payload = {
-        from,
-        to: [email],
-        subject: 'Kode OTP Verifikasi Akun AbsensiPro',
-        html,
-    };
-
     try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: gmailUser,
+                pass: gmailPass,   // Google App Password (bukan password Gmail biasa)
             },
-            body: JSON.stringify(payload),
         });
 
-        const result = await response.json();
-
-        if (response.ok) {
-            return res.status(200).json({ success: true, message: 'OTP terkirim.', id: result.id ?? null });
-        }
-
-        // Resend mengembalikan detail error (mis. domain belum diverifikasi)
-        console.error('Resend API error:', result);
-        return res.status(response.status).json({
-            success: false,
-            message: result.message || 'Gagal mengirim email OTP.',
-            resend_error: result,
+        await transporter.sendMail({
+            from: `"AbsensiPro" <${gmailUser}>`,
+            to: email,
+            subject: 'Kode OTP Verifikasi Akun AbsensiPro',
+            html,
         });
+
+        return res.status(200).json({ success: true, message: 'OTP terkirim.' });
+
     } catch (err) {
-        console.error('Fetch ke Resend gagal:', err);
-        return res.status(502).json({ success: false, message: 'Gagal menghubungi layanan email.' });
+        console.error('Gagal kirim email via Gmail SMTP:', err.message);
+        return res.status(502).json({
+            success: false,
+            message: 'Gagal mengirim email OTP: ' + err.message,
+        });
     }
 }

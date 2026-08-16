@@ -2,14 +2,18 @@
   "name": "absensipro-build",
   "version": "1.0.0",
   "private": true,
-  "description": "Build/obfuscation pipeline untuk AbsensiPro (menghasilkan folder dist/ siap deploy)",
+  "description": "Sistem Absensi Online - AbsensiPro",
+  "type": "module",
   "scripts": {
     "build": "node build.js"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.0"
   },
   "devDependencies": {
     "javascript-obfuscator": "^4.1.1"
   },
   "engines": {
-    "node": ">=16.7.0"
+    "node": ">=18.0.0"
   }
 }
