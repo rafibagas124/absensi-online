@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+phpmailer/
 
 # Hasil build (auto-generated oleh `npm run build`, jangan di-commit)
 dist/
@@ -12,3 +13,6 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Rahasia - jangan pernah di-commit
+.env

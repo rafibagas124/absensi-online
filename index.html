@@ -266,11 +266,6 @@
                     <div class="flex-1 h-0.5 bg-slate-200 mx-1"></div>
                     <div class="flex flex-col items-center gap-1" id="stepDot4">
                         <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">4</div>
-                        <span class="text-slate-400">Verifikasi OTP</span>
-                    </div>
-                    <div class="flex-1 h-0.5 bg-slate-200 mx-1"></div>
-                    <div class="flex flex-col items-center gap-1" id="stepDot5">
-                        <div class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 text-slate-500">5</div>
                         <span class="text-slate-400">Finish</span>
                     </div>
                 </div>
@@ -383,33 +378,8 @@
                     <button type="button" onclick="goRegStep(2)" class="mt-3 text-xs text-slate-500 hover:underline">&larr; Kembali pilih paket</button>
                 </div>
 
-                <!-- STEP 4: VERIFIKASI OTP EMAIL -->
-                <div id="regStep4" class="hidden max-w-md w-full">
-                    <div class="border rounded-lg">
-                        <div class="border-b p-4">
-                            <h3 class="font-bold text-slate-800">Verifikasi Email</h3>
-                            <p class="text-xs text-slate-500 mt-1">Kode OTP 6 digit telah dikirim ke <b id="otpTargetEmail">-</b>. Masukkan kode tersebut untuk melanjutkan.</p>
-                        </div>
-                        <form onsubmit="handleVerifyOtp(event)" class="p-4 space-y-4">
-
-                            <div class="flex justify-between gap-2" id="otpInputGroup">
-                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-                                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit w-12 h-12 text-center text-lg font-bold border rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-                            </div>
-                            <p id="otpErrorMsg" class="hidden text-xs text-red-600 font-medium"><i class="fa-solid fa-circle-exclamation mr-1"></i>Kode OTP salah atau sudah kedaluwarsa.</p>
-                            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">Verifikasi & Selesaikan Pendaftaran</button>
-                            <p class="text-center text-xs text-slate-500">Tidak menerima kode? <button type="button" onclick="resendOtp()" id="btnResendOtp" class="text-blue-600 font-semibold hover:underline">Kirim ulang</button> <span id="otpResendTimer" class="text-slate-400"></span></p>
-                        </form>
-                    </div>
-                    <button type="button" onclick="goRegStep(3)" class="mt-3 text-xs text-slate-500 hover:underline">&larr; Kembali isi data akun</button>
-                </div>
-
-                <!-- STEP 5: FINISH -->
-                <div id="regStep5" class="hidden max-w-md w-full text-center py-10">
+                <!-- STEP 4: FINISH -->
+                <div id="regStep4" class="hidden max-w-md w-full text-center py-10">
                     <i class="fa-solid fa-circle-check text-emerald-500 text-5xl mb-4"></i>
                     <h3 class="font-bold text-lg text-slate-800">Pendaftaran Berhasil!</h3>
                     <p class="text-sm text-slate-500 mt-2">Email Anda berhasil diverifikasi dan akun perusahaan sudah aktif. Silakan masuk menggunakan akun Admin baru Anda.</p>

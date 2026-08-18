@@ -595,10 +595,7 @@ function toggleSidebar(show) {
         }
 
         let regSelectedBidang = null;
-        let pendingRegistration = null; // Data akun sementara sebelum OTP diverifikasi
-        let pendingOtpCode = null;
-        let otpExpireAt = 0;
-        let otpResendCooldownTimer = null;
+        let pendingRegistration = null; // Data akun sementara sebelum submit ke server
 
         function showRegisterFlow() {
             document.getElementById('loginSection').classList.add('hidden');
@@ -610,15 +607,11 @@ function toggleSidebar(show) {
             document.getElementById('loginSection').classList.remove('hidden');
             regSelectedBidang = null;
             pendingRegistration = null;
-            pendingOtpCode = null;
             ['regStep1','regStep2','regStep3','regStep4'].forEach(id => document.getElementById(id).classList.add('hidden'));
-            document.getElementById('regStep5').classList.add('hidden');
             document.getElementById('regStep1').classList.remove('hidden');
             document.getElementById('btnBidangNext').disabled = true;
             document.getElementById('btnBidangNext').className = "mt-6 w-full bg-slate-300 text-white font-semibold py-2.5 rounded-lg text-sm transition cursor-not-allowed";
             document.querySelectorAll('.bidang-opt').forEach(el => el.classList.remove('border-blue-500','bg-blue-50'));
-            document.querySelectorAll('.otp-digit').forEach(el => el.value = '');
-            if (otpResendCooldownTimer) clearInterval(otpResendCooldownTimer);
         }
         function selectBidang(nama, iconClass) {
             regSelectedBidang = nama;
@@ -629,7 +622,7 @@ function toggleSidebar(show) {
             btn.className = "mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition";
         }
         function goRegStep(step) {
-            [1,2,3,4,5].forEach(n => {
+            [1,2,3,4].forEach(n => {
                 document.getElementById('regStep'+n).classList.toggle('hidden', n !== step);
                 const dot = document.getElementById('stepDot'+n).firstElementChild;
                 if (n < step) { dot.className = "w-8 h-8 rounded-full flex items-center justify-center bg-emerald-500 text-white"; dot.innerHTML = '<i class="fa-solid fa-check text-xs"></i>'; }
@@ -641,12 +634,8 @@ function toggleSidebar(show) {
                     r.onchange = () => document.getElementById('paketNamaLabel').innerText = r.value;
                 });
             }
-            if (step === 4) {
-                const firstDigit = document.querySelector('#otpInputGroup .otp-digit');
-                if (firstDigit) setTimeout(() => firstDigit.focus(), 100);
-            }
         }
-        function handleRegisterSubmit(e) {
+        async function handleRegisterSubmit(e) {
             e.preventDefault();
             const company = document.getElementById('regCompany').value.trim();
             const companyCode = document.getElementById('regCompanyCode').value.trim().toUpperCase();
@@ -659,8 +648,6 @@ function toggleSidebar(show) {
             if (pass !== passConfirm) { alert('Konfirmasi password tidak cocok.'); return; }
             if (pass.length < 8) { alert('Password minimal 8 karakter.'); return; }
 
-            // Data akun disimpan sementara di memori -> baru benar-benar dibuat DI SERVER
-            // setelah OTP email terverifikasi (lihat handleVerifyOtp).
             pendingRegistration = {
                 nama_perusahaan: company,
                 kode_perusahaan: companyCode,
@@ -672,118 +659,11 @@ function toggleSidebar(show) {
                 whatsapp: wa
             };
 
-            document.getElementById('otpTargetEmail').innerText = email;
-            goRegStep(4);
-            sendOtpToEmail(email);
-        }
-
-        // ================== VERIFIKASI OTP EMAIL (STEP 4 REGISTRASI) — VIA RESEND (backend PHP) ==================
-        // Pengiriman TIDAK lagi dilakukan langsung dari browser (seperti EmailJS sebelumnya).
-        // API key Resend adalah secret dan hanya boleh dipakai di server -> lihat send_otp.php.
-        // app.js di sini hanya memanggil endpoint backend tersebut.
-
-        function generateOtpCode() {
-            return String(Math.floor(100000 + Math.random() * 900000));
-        }
-
-        async function sendOtpToEmail(email) {
-            pendingOtpCode = generateOtpCode();
-            otpExpireAt = Date.now() + (5 * 60 * 1000); // berlaku 5 menit
-            document.getElementById('otpErrorMsg').classList.add('hidden');
-            document.querySelectorAll('.otp-digit').forEach(el => el.value = '');
-
-            const sendBtn = document.querySelector('#regStep4 button[type="submit"]');
-
-            const waktuKedaluwarsa = new Date(otpExpireAt).toLocaleTimeString(appLocale(), { hour: '2-digit', minute: '2-digit' });
-
-            devNote.classList.add('hidden');
-            if (sendBtn) { sendBtn.disabled = true; sendBtn.innerText = 'Mengirim OTP...'; }
-
-            try {
-                const res = await fetch('/api/send-otp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        email: email,
-                        otp: pendingOtpCode,
-                        expires_at: waktuKedaluwarsa
-                    })
-                });
-                const result = await res.json();
-
-                if (!res.ok || !result.success) {
-                    throw new Error(result.message || 'Gagal mengirim email OTP.');
-                }
-
-                showAlert(`Kode OTP telah dikirim ke <b>${email}</b>. Cek inbox (atau folder spam) email Anda. Berlaku hingga <b>${waktuKedaluwarsa}</b>.`, 'success');
-                startOtpResendCooldown();
-            } catch (err) {
-                console.error('Gagal mengirim OTP via Resend:', err);
-                // Tampilkan pesan error yang informatif — JANGAN expose OTP di layar
-                showAlert('Gagal mengirim email OTP: ' + (err.message || 'Coba beberapa saat lagi atau hubungi administrator.'), 'error');
-            } finally {
-                if (sendBtn) { sendBtn.disabled = false; sendBtn.innerText = 'Verifikasi & Selesaikan Pendaftaran'; }
-            }
-        }
-
-        function resendOtp() {
-            if (!pendingRegistration) return;
-            sendOtpToEmail(pendingRegistration.username);
-        }
-
-        function startOtpResendCooldown() {
-            let sisa = 30;
-            const btn = document.getElementById('btnResendOtp');
-            const timerLabel = document.getElementById('otpResendTimer');
-            btn.classList.add('pointer-events-none', 'opacity-40');
-            if (otpResendCooldownTimer) clearInterval(otpResendCooldownTimer);
-            timerLabel.innerText = `(${sisa}s)`;
-            otpResendCooldownTimer = setInterval(() => {
-                sisa--;
-                if (sisa <= 0) {
-                    clearInterval(otpResendCooldownTimer);
-                    btn.classList.remove('pointer-events-none', 'opacity-40');
-                    timerLabel.innerText = '';
-                } else {
-                    timerLabel.innerText = `(${sisa}s)`;
-                }
-            }, 1000);
-        }
-
-        async function handleVerifyOtp(e) {
-            e.preventDefault();
-            const digits = Array.from(document.querySelectorAll('#otpInputGroup .otp-digit')).map(el => el.value.trim());
-            const inputCode = digits.join('');
-            const errEl = document.getElementById('otpErrorMsg');
-            errEl.classList.add('hidden');
-
-            if (inputCode.length < 6) {
-                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Mohon isi seluruh 6 digit kode OTP.';
-                errEl.classList.remove('hidden');
-                return;
-            }
-            if (Date.now() > otpExpireAt) {
-                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Kode OTP sudah kedaluwarsa. Silakan kirim ulang.';
-                errEl.classList.remove('hidden');
-                return;
-            }
-            if (inputCode !== pendingOtpCode) {
-                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Kode OTP salah. Periksa kembali email Anda.';
-                errEl.classList.remove('hidden');
-                return;
-            }
-            if (!pendingRegistration) {
-                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Sesi pendaftaran hilang, silakan ulangi dari awal.';
-                errEl.classList.remove('hidden');
-                return;
-            }
-
             const submitBtn = e.target.querySelector('button[type="submit"]');
             if (submitBtn) { submitBtn.disabled = true; submitBtn.dataset.originalHtml = submitBtn.innerHTML; submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Membuat akun...'; }
 
-            // OTP valid di sisi client -> BARU SEKARANG perusahaan & akun admin
-            // benar-benar dibuat di server (auth.php?action=register), bukan
-            // sekadar push ke array localStorage seperti sebelumnya.
+            // Perusahaan & akun admin langsung dibuat di server (auth.php?action=register),
+            // tanpa melalui langkah verifikasi OTP email.
             let result;
             try {
                 const res = await fetch(`${API_BASE_URL}/auth.php?action=register`, {
@@ -802,16 +682,14 @@ function toggleSidebar(show) {
                 result = await res.json();
             } catch (err) {
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtn.dataset.originalHtml; }
-                errEl.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i>Gagal terhubung ke server. Periksa koneksi lalu coba lagi.';
-                errEl.classList.remove('hidden');
+                alert('Gagal terhubung ke server. Periksa koneksi lalu coba lagi.');
                 return;
             }
 
             if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtn.dataset.originalHtml; }
 
             if (!result.success) {
-                errEl.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-1"></i>${result.message}`;
-                errEl.classList.remove('hidden');
+                alert(result.message || 'Gagal mendaftar. Silakan coba lagi.');
                 return;
             }
 
@@ -819,25 +697,8 @@ function toggleSidebar(show) {
             if (finishCodeEl) finishCodeEl.innerText = result.data.kode_perusahaan;
 
             pendingRegistration = null;
-            pendingOtpCode = null;
-            if (otpResendCooldownTimer) clearInterval(otpResendCooldownTimer);
-            goRegStep(5);
+            goRegStep(4);
         }
-
-        // Navigasi otomatis antar kotak OTP (ketik maju, backspace mundur)
-        document.addEventListener('input', (e) => {
-            if (!e.target.classList.contains('otp-digit')) return;
-            e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 1);
-            if (e.target.value && e.target.nextElementSibling && e.target.nextElementSibling.classList.contains('otp-digit')) {
-                e.target.nextElementSibling.focus();
-            }
-        });
-        document.addEventListener('keydown', (e) => {
-            if (!e.target.classList.contains('otp-digit')) return;
-            if (e.key === 'Backspace' && !e.target.value && e.target.previousElementSibling && e.target.previousElementSibling.classList.contains('otp-digit')) {
-                e.target.previousElementSibling.focus();
-            }
-        });
 
         // ================== AI FACE RECOGNITION (face-api.js) ==================
         // Model dimuat dari CDN: TinyFaceDetector (deteksi wajah) + FaceLandmark68Tiny (titik wajah, untuk cek oklusi)

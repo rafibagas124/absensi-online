@@ -1,18 +1,41 @@
 <?php
+// ================== LOAD .env FILE (jika tidak ada dotenv library) ==================
+$envFile = __DIR__ . '/.env';
+if (file_exists($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#')) continue;
+        if (strpos($line, '=') !== false) {
+            [$key, $value] = explode('=', $line, 2);
+            $key   = trim($key);
+            $value = trim($value);
+            // Hapus tanda kutip jika ada
+            $value = trim($value, '"\'');
+            if (!array_key_exists($key, $_ENV)) {
+                $_ENV[$key] = $value;
+                putenv("$key=$value");
+            }
+        }
+    }
+}
+
 // ================== KONFIGURASI DATABASE ==================
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'absensipro');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+define('DB_NAME', getenv('DB_NAME') ?: 'absensipro');
+define('DB_USER', getenv('DB_USER') ?: 'root');
+define('DB_PASS', getenv('DB_PASS') ?: '');
 
 // ================== KONFIGURASI RESEND (PENGIRIM EMAIL OTP) ==================
-// PENTING: key ini SECRET (beda dengan public key EmailJS) — jangan pernah taruh di app.js/frontend,
-// dan sebaiknya jangan di-commit ke repo Git publik. Kelola/rotate di https://resend.com/api-keys
+// PENTING: key ini SECRET — jangan pernah taruh di app.js/frontend.
+// Kelola/rotate API Key di https://resend.com/api-keys
+//
+// ⚠️  BATASAN MODE TESTING RESEND:
+//     Selama memakai "onboarding@resend.dev" sebagai pengirim (RESEND_FROM),
+//     email OTP HANYA bisa dikirim ke alamat email pemilik akun Resend itu sendiri.
+//     Untuk bisa kirim ke email siapapun, daftarkan & verifikasi domain kamu di:
+//     https://resend.com/domains  → lalu ganti RESEND_FROM ke email domainmu.
 define('RESEND_API_KEY', getenv('RESEND_API_KEY') ?: '');
-// Alamat "from". Selama domain sendiri belum diverifikasi di Resend (Domains > Add Domain),
-// WAJIB pakai onboarding@resend.dev, dan email hanya akan terkirim ke alamat email akun Resend kamu sendiri
-// (batasan mode testing Resend). Setelah domain diverifikasi, ganti ke email dari domainmu sendiri.
-define('RESEND_FROM', 'Absensi App <onboarding@resend.dev>');
+define('RESEND_FROM',    getenv('RESEND_FROM')    ?: 'Absensi App <onboarding@resend.dev>');
 
 // ================== KONFIGURASI DOMAIN FRONTEND (WAJIB DIISI) ==================
 // Ganti dengan domain frontend production kamu. Untuk dev lokal boleh lebih dari satu.
