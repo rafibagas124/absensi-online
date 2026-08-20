@@ -4,8 +4,15 @@
 -- Project: thalftivgwdugkuipxqy (rafibagas124's Project)
 -- ============================================================
 
+-- ===== 0. RESET TABEL LAMA (Mencegah bentrok tipe data UUID vs BIGINT) =====
+DROP TABLE IF EXISTS public.attendance_logs CASCADE;
+DROP TABLE IF EXISTS public.office_locations CASCADE;
+DROP TABLE IF EXISTS public.shift_configs CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
+DROP TABLE IF EXISTS public.companies CASCADE;
+
 -- ===== 1. TABEL COMPANIES (TENANT) =====
-CREATE TABLE IF NOT EXISTS public.companies (
+CREATE TABLE public.companies (
     id         BIGSERIAL PRIMARY KEY,
     code       VARCHAR(30)  NOT NULL UNIQUE,
     nama       VARCHAR(150) NOT NULL,
