@@ -127,17 +127,22 @@ RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
 $$;
 
 -- ===== POLICIES: companies =====
--- Semua user yang sudah login bisa lihat data perusahaan mereka sendiri
-CREATE POLICY "companies_select_own"
+-- Siapapun (publik/user) bisa melihat info perusahaan (id, code, nama untuk validasi login/register)
+DROP POLICY IF EXISTS "companies_select_own" ON public.companies;
+DROP POLICY IF EXISTS "companies_select_all" ON public.companies;
+CREATE POLICY "companies_select_all"
     ON public.companies FOR SELECT
-    USING (id = public.my_company_id());
+    USING (true);
 
--- Siapapun (anon) boleh INSERT company baru (untuk register)
-CREATE POLICY "companies_insert_anon"
+-- Siapapun boleh mendaftarkan perusahaan baru
+DROP POLICY IF EXISTS "companies_insert_anon" ON public.companies;
+DROP POLICY IF EXISTS "companies_insert_all" ON public.companies;
+CREATE POLICY "companies_insert_all"
     ON public.companies FOR INSERT
     WITH CHECK (true);
 
--- Hanya admin perusahaan sendiri yang boleh update
+-- Hanya admin perusahaan sendiri yang boleh update data perusahaannya
+DROP POLICY IF EXISTS "companies_update_admin" ON public.companies;
 CREATE POLICY "companies_update_admin"
     ON public.companies FOR UPDATE
     USING (id = public.my_company_id() AND public.my_role() = 'admin');
@@ -218,14 +223,18 @@ CREATE POLICY "attendance_delete_admin"
     USING (company_id = public.my_company_id() AND public.my_role() IN ('admin','hrd'));
 
 -- ===== POLICIES: shift_configs =====
+DROP POLICY IF EXISTS "shift_select_same_company" ON public.shift_configs;
 CREATE POLICY "shift_select_same_company"
     ON public.shift_configs FOR SELECT
     USING (company_id = public.my_company_id());
 
-CREATE POLICY "shift_insert_admin"
+DROP POLICY IF EXISTS "shift_insert_admin" ON public.shift_configs;
+DROP POLICY IF EXISTS "shift_insert_all" ON public.shift_configs;
+CREATE POLICY "shift_insert_all"
     ON public.shift_configs FOR INSERT
-    WITH CHECK (company_id = public.my_company_id() AND public.my_role() IN ('admin','hrd'));
+    WITH CHECK (true);
 
+DROP POLICY IF EXISTS "shift_update_admin" ON public.shift_configs;
 CREATE POLICY "shift_update_admin"
     ON public.shift_configs FOR UPDATE
     USING (company_id = public.my_company_id() AND public.my_role() IN ('admin','hrd'));
