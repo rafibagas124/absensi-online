@@ -12,26 +12,20 @@ function toggleSidebar(show) {
     }
 }
 
-// ================== KONFIGURASI BACKEND PHP (GEOFENCING SERVER-SIDE) ==================
-        // Ganti sesuai lokasi folder backend-php/ Anda di-host, contoh:
-        // 'https://domainanda.com/backend-php' atau '/backend-php' kalau 1 domain dengan frontend.
-        const API_BASE_URL = '/backend-php';
+// ================== KONFIGURASI SUPABASE (menggantikan API_BASE_URL PHP) ==================
+        // Semua operasi database, auth, dan storage sekarang melalui Supabase SDK
+        // (lihat supabase_client.js untuk implementasi fungsinya)
 
-        // DATABASE LOKAL
-        let users = JSON.parse(localStorage.getItem('absensi_users')) || [
-            { id: "EMP-001", nama: "Budi Santoso", jabatan: "Frontend Dev", tglMasuk: "2023-01-15", username: "user", pass: "123456", role: "staff", shift: "pagi", allowChangePassword: false },
-            { id: "HRD-101", nama: "Siti Rahma", jabatan: "HR Manager", tglMasuk: "2022-05-10", username: "hrd", pass: "123456", role: "hrd", shift: "pagi", allowChangePassword: false },
-            { id: "ADM-999", nama: "Administrator", jabatan: "System Admin", tglMasuk: "2021-01-01", username: "admin", pass: "123456", role: "admin", shift: "pagi", allowChangePassword: false }
-        ];
-        // Migrasi data lama: pastikan setiap user punya field shift (default pagi) & izin ubah password (default belum diizinkan)
+        // DATABASE LOKAL (hanya untuk kompatibilitas sementara, data asli dari Supabase)
+        let users = [];
+        // Migrasi data lama: pastikan setiap user punya field shift (default pagi)
         users.forEach(u => {
             if (!u.shift) u.shift = 'pagi';
             if (typeof u.allowChangePassword === 'undefined') u.allowChangePassword = false;
             if (!u.role) u.role = 'staff';
-            if (u.role === 'karyawan') u.role = 'staff'; // migrasi data lama: role "karyawan" -> "staff"
-            if (typeof u.jatahCuti === 'undefined') u.jatahCuti = 12; // jatah cuti/izin tahunan default (hari)
+            if (u.role === 'karyawan') u.role = 'staff';
+            if (typeof u.jatahCuti === 'undefined') u.jatahCuti = 12;
         });
-        localStorage.setItem('absensi_users', JSON.stringify(users)); // simpan hasil migrasi supaya tidak diulang tiap load
 
         // ================== KONFIGURASI SHIFT KERJA (BISA DIUBAH ADMIN/HRD, DISIMPAN DI localStorage) ==================
         const DEFAULT_SHIFT_CONFIG = {
@@ -75,19 +69,10 @@ function toggleSidebar(show) {
 
         async function loadOfficeLocationsFromServer() {
             try {
-                const res = await fetch(`${API_BASE_URL}/office_locations.php`, { credentials: 'include' });
-                const json = await res.json();
-                if (json.success) {
-                    officeLocations = json.data.map(o => ({ ...o, lat: parseFloat(o.lat), lng: parseFloat(o.lng), radius: parseInt(o.radius, 10) }));
-                } else {
-                    officeLocations = [];
-                }
+                officeLocations = await sbGetOfficeLocations();
             } catch (err) {
-                // Backend belum terhubung / offline. Fallback: validasi jarak dinonaktifkan
-                // sampai koneksi ke backend-php pulih (staff tetap tidak bisa absen kalau
-                // backend down, karena submitAbsen() mewajibkan panggilan ke server).
                 officeLocations = [];
-                console.error('Gagal memuat lokasi kantor dari backend:', err);
+                console.error('Gagal memuat lokasi kantor dari Supabase:', err);
             }
             return officeLocations;
         }
@@ -155,7 +140,6 @@ function toggleSidebar(show) {
             });
         }
 
-        // MASA KERJA
         function hitungMasaKerja(tglMasukStr) {
             if (!tglMasukStr) return "-";
             const masuk = new Date(tglMasukStr);
@@ -164,14 +148,14 @@ function toggleSidebar(show) {
             let bulan = sekarang.getMonth() - masuk.getMonth();
             if (bulan < 0) { tahun--; bulan += 12; }
             let hasil = [];
-            if (tahun > 0) hasil.push(`${tahun} Thn`);
-            if (bulan > 0 || tahun === 0) hasil.push(`${bulan} Bln`);
-            return hasil.join(' ') || "Baru Masuk";
+            if (tahun > 0) hasil.push(`${tahun} ${t('Thn')}`);
+            if (bulan > 0 || tahun === 0) hasil.push(`${bulan} ${t('Bln')}`);
+            return hasil.join(' ') || t("Baru Masuk");
         }
 
         // HITUNG DURASI JAM KERJA
         function hitungDurasiKerja(waktuMasuk, waktuPulang) {
-            if(!waktuMasuk || !waktuPulang || waktuPulang === '-') return "Sedang Bekerja...";
+            if(!waktuMasuk || !waktuPulang || waktuPulang === '-') return t("Sedang Bekerja...");
             
             const [h1, m1] = waktuMasuk.split(':').map(Number);
             const [h2, m2] = waktuPulang.split(':').map(Number);
@@ -185,13 +169,13 @@ function toggleSidebar(show) {
             let jam = Math.floor(selisihMenit / 60);
             let menit = selisihMenit % 60;
 
-            return `${jam} Jam ${menit} Mnt`;
+            return `${jam} ${t('Jam')} ${menit} ${t('Mnt')}`;
         }
 
         document.addEventListener("DOMContentLoaded", () => {
             saveUsersToStorage();
-            restoreSessionFromServer(); // cek sesi login ke server (bukan localStorage/sessionStorage lagi), lalu panggil checkSession()
-            loadOfficeLocationsFromServer(); // ambil daftar kantor dari backend PHP (bukan localStorage)
+            restoreSessionFromServer(); // cek sesi login ke Supabase, lalu panggil checkSession()
+            loadOfficeLocationsFromServer(); // ambil daftar kantor dari Supabase
             setInterval(updateOverlayTime, 1000);
             setTimeout(loadFaceModels, 800); // preload model AI di background
             setTimeout(initGoogleSignIn, 500); // tunggu script Google Identity Services siap
@@ -226,31 +210,22 @@ function toggleSidebar(show) {
             setTimeout(() => el.classList.add('hidden'), 5000);
         }
 
-        // ================== JEMBATAN SEMENTARA: gabungkan profil dari server dengan data
-        // UI-only yang MASIH tersimpan di localStorage (shift, jatah cuti, tglMasuk, izin
-        // ubah password). Ini perlu ada karena fitur manajemen karyawan/shift/cuti belum
-        // dipindah ke backend (lihat catatan di ringkasan chat) -- begitu fitur itu sudah
-        // dipindah ke database sungguhan, fungsi ini bisa dihapus.
+        // Normalisasi data profil dari Supabase ke format yang dipakai app.js
+        // Supabase sudah jadi sumber kebenaran tunggal — tidak perlu merge localStorage lagi.
         function mergeLocalProfileFields(serverUser) {
             if (!serverUser) return serverUser;
-            const local = users.find(u =>
-                (serverUser.username && u.username && u.username.toLowerCase() === serverUser.username.toLowerCase()) ||
-                (serverUser.email && u.username && u.username.toLowerCase() === serverUser.email.toLowerCase())
-            );
             return {
                 ...serverUser,
-                shift: (local && local.shift) || 'pagi',
-                jatahCuti: (local && typeof local.jatahCuti !== 'undefined') ? local.jatahCuti : 12,
-                tglMasuk: (local && local.tglMasuk) || new Date().toISOString().split('T')[0],
-                allowChangePassword: local ? !!local.allowChangePassword : false,
+                // Pastikan semua alias tersedia
+                shift: serverUser.shift || 'pagi',
+                jatahCuti: serverUser.jatahCuti ?? serverUser.jatah_cuti ?? 12,
+                tglMasuk: serverUser.tglMasuk || serverUser.tgl_masuk || new Date().toISOString().split('T')[0],
+                allowChangePassword: !!(serverUser.allowChangePassword || serverUser.allow_change_password),
+                mustChangePassword: !!(serverUser.mustChangePassword || serverUser.must_change_password),
             };
         }
 
-        // ================== LOGIN (SEKARANG BENERAN KE SERVER, BUKAN localStorage) ==================
-        // Akun & rate-limiting percobaan gagal sekarang murni ditentukan oleh backend
-        // (auth.php + tabel users/login_attempts di MySQL), supaya akun yang sama bisa
-        // dipakai login dari perangkat MANAPUN, dan supaya lockout tidak bisa dilewati
-        // hanya dengan clear localStorage di browser client.
+        // ================== LOGIN (SEKARANG KE SUPABASE, BUKAN PHP) ==================
         async function handleLogin(e) {
             e.preventDefault();
             const kodePerusahaan = document.getElementById('loginCompanyCode').value.trim();
@@ -261,44 +236,50 @@ function toggleSidebar(show) {
             const btnSubmit = e.target.querySelector('button[type="submit"]');
             if (btnSubmit) { btnSubmit.disabled = true; btnSubmit.dataset.originalHtml = btnSubmit.innerHTML; btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Memeriksa akun...'; }
 
-            let result;
             try {
-                const res = await fetch(`${API_BASE_URL}/auth.php?action=login`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ kode_perusahaan: kodePerusahaan, username: uInput, password: pInput })
-                });
-                result = await res.json();
+                // uInput bisa berupa email
+                const userData = await sbLogin({ kode_perusahaan: kodePerusahaan, email: uInput, password: pInput });
+                currentUser = mergeLocalProfileFields(userData);
+                // Muat ulang data setelah login berhasil
+                await loadOfficeLocationsFromServer();
+                await loadAbsensiLogsFromSupabase();
+                showAlert(`Selamat datang kembali, <b>${currentUser.nama}</b>!`, 'success');
+                checkSession();
             } catch (err) {
+                showAlert(`<b>${err.message}</b>`, 'error');
+            } finally {
                 if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = btnSubmit.dataset.originalHtml; }
-                return showAlert('<b>Gagal terhubung ke server.</b> Pastikan backend PHP aktif dan API_BASE_URL sudah benar.', 'error');
             }
+        }
 
-            if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = btnSubmit.dataset.originalHtml; }
-
-            if (!result.success) {
-                return showAlert(`<b>${result.message}</b>`, 'error');
+        // Dipanggil sekali saat halaman dimuat: cek ke Supabase apakah sesi login masih aktif
+        async function restoreSessionFromServer() {
+            try {
+                const userData = await sbGetCurrentUser();
+                if (userData) {
+                    currentUser = mergeLocalProfileFields(userData);
+                    await loadAbsensiLogsFromSupabase();
+                } else {
+                    currentUser = null;
+                }
+            } catch (err) {
+                currentUser = null;
+                console.error('Restore session error:', err);
             }
-
-            currentUser = mergeLocalProfileFields(result.data); // { id, nama, jabatan, email, role, must_change_password } + field UI-only dari localStorage
-            showAlert(`Selamat datang kembali, <b>${currentUser.nama}</b>!`, 'success');
             checkSession();
         }
 
-        // Dipanggil sekali saat halaman dimuat: cek ke server apakah sesi login
-        // (cookie PHP session) masih aktif, supaya refresh halaman tidak selalu
-        // melempar user ke layar login walau sebenarnya masih login.
-        async function restoreSessionFromServer() {
+        // Load semua log absensi dari Supabase ke variabel absensiLogs
+        async function loadAbsensiLogsFromSupabase() {
             try {
-                const res = await fetch(`${API_BASE_URL}/auth.php?action=me`, { credentials: 'include' });
-                if (!res.ok) { currentUser = null; return checkSession(); }
-                const result = await res.json();
-                currentUser = result.success ? mergeLocalProfileFields(result.data) : null;
+                const rawLogs = await sbGetAttendanceLogs();
+                absensiLogs = rawLogs.map(sbLogToAppFormat);
+                saveLogsToStorage();
             } catch (err) {
-                currentUser = null;
+                console.error('Gagal load logs dari Supabase:', err);
+                // Fallback ke cache localStorage
+                absensiLogs = JSON.parse(localStorage.getItem('absensi_logs')) || [];
             }
-            checkSession();
         }
 
         // ================== MODAL PEMULIHAN AKUN (BANNED PERMANEN) ==================
@@ -351,12 +332,12 @@ function toggleSidebar(show) {
 
         async function logout() {
             try {
-                await fetch(`${API_BASE_URL}/auth.php?action=logout`, { method: 'POST', credentials: 'include' });
+                await sbLogout();
             } catch (err) {
-                // Tetap lanjut logout di sisi client walau request ke server gagal (mis. offline),
-                // supaya user tidak "terjebak" di halaman aplikasi.
+                // Tetap lanjut logout di sisi client walau request ke server gagal
             }
             currentUser = null;
+            absensiLogs = [];
             stopCamera();
             checkSession();
             showAlert('Anda telah keluar dari sistem.', 'success');
@@ -409,7 +390,8 @@ function toggleSidebar(show) {
             document.getElementById('navUserName').innerText = currentUser.nama;
             document.getElementById('navUserRole').innerText = roleLabel(currentUser.role);
 
-            if(currentUser.role === 'staff' || currentUser.role === 'magang') {
+            // 'karyawan' adalah role di Supabase; 'staff' adalah alias lama
+            if(currentUser.role === 'karyawan' || currentUser.role === 'staff' || currentUser.role === 'magang') {
                 switchMainTab('absen');
             } else if(currentUser.role === 'hrd') {
                 btnPanel.classList.remove('hidden');
@@ -417,7 +399,7 @@ function toggleSidebar(show) {
                 if (btnKalender) btnKalender.classList.remove('hidden');
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
                 document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line w-4";
-                document.getElementById('lblTabPanelText').innerText = "Monitoring & Rekap HRD";
+                document.getElementById('lblTabPanelText').innerText = t("Monitoring & Rekap HRD");
                 switchMainTab('absen');
             } else if(currentUser.role === 'admin') {
                 btnPanel.classList.remove('hidden');
@@ -429,7 +411,7 @@ function toggleSidebar(show) {
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
                 masterLabel.classList.remove('hidden');
                 document.getElementById('lblTabPanelIcon').className = "fa-solid fa-users-gear w-4";
-                document.getElementById('lblTabPanelText').innerText = "Kelola User & Admin";
+                document.getElementById('lblTabPanelText').innerText = t("Kelola User & Admin");
                 switchMainTab('absen');
             }
             updateSuratPendingBadge();
@@ -450,9 +432,9 @@ function toggleSidebar(show) {
         }
 
         function setupKaryawanView() {
-            document.getElementById('ovNama').innerText = "Nama: " + currentUser.nama;
-            document.getElementById('ovId').innerText = "ID: " + currentUser.id;
-            document.getElementById('ovJabatan').innerText = "Jabatan: " + currentUser.jabatan;
+            document.getElementById('ovNama').innerText = t('Nama:') + " " + currentUser.nama;
+            document.getElementById('ovId').innerText = t('ID:') + " " + (currentUser.employee_id || currentUser.id);
+            document.getElementById('ovJabatan').innerText = t('Jabatan:') + " " + currentUser.jabatan;
             document.getElementById('myMasaKerja').innerText = hitungMasaKerja(currentUser.tglMasuk);
 
             // Tampilkan jam masuk/pulang sesuai shift staff yang login
@@ -662,42 +644,26 @@ function toggleSidebar(show) {
             const submitBtn = e.target.querySelector('button[type="submit"]');
             if (submitBtn) { submitBtn.disabled = true; submitBtn.dataset.originalHtml = submitBtn.innerHTML; submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Membuat akun...'; }
 
-            // Perusahaan & akun admin langsung dibuat di server (auth.php?action=register),
-            // tanpa melalui langkah verifikasi OTP email.
-            let result;
+            // Perusahaan & akun admin langsung dibuat di Supabase (tanpa OTP email)
             try {
-                const res = await fetch(`${API_BASE_URL}/auth.php?action=register`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        kode_perusahaan: pendingRegistration.kode_perusahaan,
-                        nama_perusahaan: pendingRegistration.nama_perusahaan,
-                        nama: pendingRegistration.nama,
-                        username: pendingRegistration.username,
-                        email: pendingRegistration.email,
-                        password: pendingRegistration.password,
-                    })
+                const result = await sbRegister({
+                    kode_perusahaan: pendingRegistration.kode_perusahaan,
+                    nama_perusahaan: pendingRegistration.nama_perusahaan,
+                    nama: pendingRegistration.nama,
+                    email: pendingRegistration.email,
+                    password: pendingRegistration.password,
                 });
-                result = await res.json();
+
+                const finishCodeEl = document.getElementById('finishCompanyCode');
+                if (finishCodeEl) finishCodeEl.innerText = result.kode_perusahaan;
+
+                pendingRegistration = null;
+                goRegStep(4);
             } catch (err) {
+                alert(err.message || 'Gagal mendaftar. Silakan coba lagi.');
+            } finally {
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtn.dataset.originalHtml; }
-                alert('Gagal terhubung ke server. Periksa koneksi lalu coba lagi.');
-                return;
             }
-
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = submitBtn.dataset.originalHtml; }
-
-            if (!result.success) {
-                alert(result.message || 'Gagal mendaftar. Silakan coba lagi.');
-                return;
-            }
-
-            const finishCodeEl = document.getElementById('finishCompanyCode');
-            if (finishCodeEl) finishCodeEl.innerText = result.data.kode_perusahaan;
-
-            pendingRegistration = null;
-            goRegStep(4);
         }
 
         // ================== AI FACE RECOGNITION (face-api.js) ==================
@@ -815,25 +781,25 @@ function toggleSidebar(show) {
             const brightness = measureBrightness(video);
             if (brightness < 55) {
                 faceState.wellLit = false;
-                setAiBadge('badgeLight', '<i class="fa-solid fa-moon mr-1"></i>Cahaya: Terlalu Gelap', 'bg-red-600/85 text-white');
+                setAiBadge('badgeLight', `<i class="fa-solid fa-moon mr-1"></i>${t('Cahaya: Terlalu Gelap')}`, 'bg-red-600/85 text-white');
             } else if (brightness > 210) {
                 faceState.wellLit = false;
-                setAiBadge('badgeLight', '<i class="fa-solid fa-sun mr-1"></i>Cahaya: Terlalu Terang', 'bg-red-600/85 text-white');
+                setAiBadge('badgeLight', `<i class="fa-solid fa-sun mr-1"></i>${t('Cahaya: Terlalu Terang')}`, 'bg-red-600/85 text-white');
             } else {
                 faceState.wellLit = true;
-                setAiBadge('badgeLight', '<i class="fa-solid fa-sun mr-1"></i>Cahaya: Baik', 'bg-emerald-600/85 text-white');
+                setAiBadge('badgeLight', `<i class="fa-solid fa-sun mr-1"></i>${t('Cahaya: Baik')}`, 'bg-emerald-600/85 text-white');
             }
 
             // 2. MODEL BELUM SIAP
             if (!faceModelsLoaded) {
-                setAiBadge('badgeModel', '<i class="fa-solid fa-microchip mr-1"></i>Memuat Model AI...', 'bg-slate-700/85 text-slate-200');
-                setAiBadge('badgeFace', '<i class="fa-solid fa-face-viewfinder mr-1"></i>Wajah: Menunggu Model', 'bg-slate-700/85 text-slate-200');
-                setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: -', 'bg-slate-700/85 text-slate-200');
+                setAiBadge('badgeModel', `<i class="fa-solid fa-microchip mr-1"></i>${t('Memuat Model AI...')}`, 'bg-slate-700/85 text-slate-200');
+                setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Menunggu Model')}`, 'bg-slate-700/85 text-slate-200');
+                setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: -')}`, 'bg-slate-700/85 text-slate-200');
                 faceState.faceDetected = false;
                 faceState.occluded = true;
                 return;
             }
-            setAiBadge('badgeModel', '<i class="fa-solid fa-microchip mr-1"></i>Model AI: Aktif', 'bg-slate-700/85 text-slate-200');
+            setAiBadge('badgeModel', `<i class="fa-solid fa-microchip mr-1"></i>${t('Model AI: Aktif')}`, 'bg-slate-700/85 text-slate-200');
 
             // 3. FACE DETECTION + LANDMARK (untuk estimasi OKLUSI)
             try {
@@ -845,14 +811,14 @@ function toggleSidebar(show) {
                     faceState.faceDetected = false;
                     faceState.occluded = true;
                     faceState.score = 0;
-                    setAiBadge('badgeFace', '<i class="fa-solid fa-face-viewfinder mr-1"></i>Wajah: Tidak Terdeteksi', 'bg-red-600/85 text-white');
-                    setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: -', 'bg-slate-700/85 text-slate-200');
+                    setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Tidak Terdeteksi')}`, 'bg-red-600/85 text-white');
+                    setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: -')}`, 'bg-slate-700/85 text-slate-200');
                     return;
                 }
 
                 faceState.faceDetected = true;
                 faceState.score = detection.detection.score;
-                setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>Wajah: Terdeteksi (${Math.round(faceState.score*100)}%)`, 'bg-emerald-600/85 text-white');
+                setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Terdeteksi')} (${Math.round(faceState.score*100)}%)`, 'bg-emerald-600/85 text-white');
 
                 // Estimasi oklusi: skor confidence rendah / bbox terlalu kecil biasanya karena wajah tertutup (masker, tangan, topi, dsb)
                 const box = detection.detection.box;
@@ -862,13 +828,13 @@ function toggleSidebar(show) {
 
                 if (lowConfidence || tooSmall) {
                     faceState.occluded = true;
-                    setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: Wajah Tertutup/Kurang Jelas', 'bg-red-600/85 text-white');
+                    setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Tertutup/Kurang Jelas')}`, 'bg-red-600/85 text-white');
                 } else {
                     faceState.occluded = false;
-                    setAiBadge('badgeOcclusion', '<i class="fa-solid fa-mask mr-1"></i>Oklusi: Wajah Terlihat Jelas', 'bg-emerald-600/85 text-white');
+                    setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Terlihat Jelas')}`, 'bg-emerald-600/85 text-white');
                 }
             } catch (err) {
-                console.error('Face analysis error:', err);
+                // error diabaikan (frame sementara tidak bisa diproses)
             }
         }
 
@@ -1011,10 +977,7 @@ function toggleSidebar(show) {
                 return showAlert('<b>Pencahayaan kurang mendukung!</b> Sesuaikan pencahayaan ruangan (jangan terlalu gelap/terlalu terang) lalu coba lagi.');
             }
 
-            // ================== GATING LOKASI GPS (VALIDASI GEOFENCING DI SERVER PHP) ==================
-            // Koordinat GPS WAJIB sudah terdeteksi, lalu dikirim ke backend PHP. Rumus
-            // Haversine dan keputusan akhir tolak/terima dihitung DI SERVER (absen_submit.php),
-            // BUKAN di JavaScript ini, supaya tidak bisa dimanipulasi dari sisi client/browser.
+            // ================== GATING LOKASI GPS ==================
             if (currentLat === null || currentLng === null) {
                 return showAlert('<b>Lokasi GPS belum terdeteksi!</b> Klik tombol ambil lokasi / izinkan akses lokasi terlebih dahulu.');
             }
@@ -1025,112 +988,98 @@ function toggleSidebar(show) {
             const btnAbsenEl = document.getElementById(tipe === 'Masuk' ? 'btnAbsenMasuk' : 'btnAbsenPulang');
             if (btnAbsenEl) { btnAbsenEl.disabled = true; btnAbsenEl.dataset.originalHtml = btnAbsenEl.innerHTML; btnAbsenEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Memvalidasi lokasi...'; }
 
-            let serverResult;
             try {
-                const res = await fetch(`${API_BASE_URL}/absen_submit.php`, {
-                    method: 'POST',
-                    credentials: 'include', // wajib: identitas & perusahaan diambil dari sesi login di server, bukan dari body ini
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        tipe: tipe,
-                        lat: currentLat,
-                        lng: currentLng,
-                        accuracy: currentGPSAccuracy
-                    })
-                });
-                if (res.status === 401) {
-                    // Sesi habis/tidak valid di server -> paksa balik ke layar login supaya user tidak bingung kenapa absen selalu gagal.
-                    logout();
-                    return showAlert('<b>Sesi Anda berakhir.</b> Silakan login kembali untuk absen.', 'error');
-                }
-                serverResult = await res.json();
-            } catch (err) {
-                if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
-                return showAlert('<b>Gagal terhubung ke server validasi lokasi.</b> Periksa koneksi internet Anda lalu coba lagi.', 'error');
-            }
-
-            if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
-
-            if (!serverResult.success) {
-                return showAlert(`<b>${serverResult.message}</b>`, 'error');
-            }
-            // serverResult.data berisi jarak & nama kantor versi resmi (dari server) —
-            // dipakai untuk pencatatan lokal di bawah supaya konsisten dengan audit di database.
-            currentGPSDistance = serverResult.data && serverResult.data.jarak !== undefined ? serverResult.data.jarak : currentGPSDistance;
-            const kantorTervalidasi = serverResult.data ? serverResult.data.kantor : (currentNearestOffice ? currentNearestOffice.office.nama : null);
-
-            const now = new Date();
-            const todayStr = now.toISOString().split('T')[0];
-            const jamNow = now.getHours();
-            const menitNow = now.getMinutes();
-            const waktuStr = now.toLocaleTimeString(appLocale());
-            const shiftCfg = getShiftConfig(currentUser); // Jam masuk/pulang mengikuti shift staff (Pagi/Siang), total tetap 8 jam
-
-            // Cari apakah user sudah pernah absen hari ini
-            let existingRecord = absensiLogs.find(l => l.userId === currentUser.id && l.tanggal === todayStr);
-
-            if (tipe === 'Masuk') {
-                if (existingRecord) {
-                    return showAlert('Anda sudah melakukan Absen Masuk hari ini!', 'error');
-                }
-
-                // Terlambat dihitung relatif terhadap jam masuk shift staff (bukan hardcode 08:00)
-                const totalMenitNow = (jamNow * 60) + menitNow;
-                const batasMenitMasuk = (shiftCfg.jamMasuk * 60) + shiftCfg.menitMasuk + (shiftCfg.toleransi || 0);
-                let isLate = totalMenitNow > batasMenitMasuk;
-                let status = isLate ? 'Terlambat' : 'Hadir';
-
-                const newLog = {
-                    id: Date.now(),
+                const serverResult = await sbSubmitAbsen({
+                    tipe,
+                    lat: currentLat,
+                    lng: currentLng,
+                    accuracy: currentGPSAccuracy,
+                    companyId: currentUser.company_id,
                     userId: currentUser.id,
                     nama: currentUser.nama,
                     jabatan: currentUser.jabatan,
-                    tglMasuk: currentUser.tglMasuk,
-                    shift: currentUser.shift || 'pagi',
-                    status: status,
-                    waktuMasuk: waktuStr,
-                    waktuPulang: '-',
-                    tanggal: todayStr,
-                    lokasi: currentGPS,
-                    gpsLat: currentLat,
-                    gpsLng: currentLng,
-                    gpsAccuracy: currentGPSAccuracy,
-                    jarakMeter: currentGPSDistance,
-                    kantorNama: kantorTervalidasi,
-                    kantorId: currentNearestOffice ? currentNearestOffice.office.id : null
-                };
+                    nearestOffice: currentNearestOffice
+                });
 
-                absensiLogs.unshift(newLog);
-                saveLogsToStorage();
-                showAlert(isLate ? `Terlambat! (Batas masuk Shift ${shiftCfg.label}: ${shiftCfg.labelMasuk}). Tercatat Masuk pukul ${waktuStr}` : `Berhasil Absen Masuk pukul ${waktuStr} (Shift ${shiftCfg.label})`, isLate ? 'error' : 'success');
-            
-            } else if (tipe === 'Pulang') {
-                // VALIDASI LICIK 1: Harus sudah Absen Masuk
-                if (!existingRecord) {
-                    return showAlert('<b>Gagal Pulang!</b> Anda belum melakukan Absen Masuk hari ini.', 'error');
+                currentGPSDistance = serverResult.jarak !== undefined ? serverResult.jarak : currentGPSDistance;
+                const kantorTervalidasi = serverResult.kantor || (currentNearestOffice ? currentNearestOffice.office.nama : null);
+
+                const now = new Date();
+                const todayStr = now.toISOString().split('T')[0];
+                const jamNow = now.getHours();
+                const menitNow = now.getMinutes();
+                const waktuStr = now.toLocaleTimeString(appLocale());
+                const shiftCfg = getShiftConfig(currentUser);
+
+                // Cari apakah user sudah pernah absen hari ini (di cache lokal)
+                let existingRecord = absensiLogs.find(l => l.userId === currentUser.id && l.tanggal === todayStr);
+
+                if (tipe === 'Masuk') {
+                    if (existingRecord && existingRecord.waktuMasuk && existingRecord.waktuMasuk !== '-') {
+                        if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
+                        return showAlert('Anda sudah melakukan Absen Masuk hari ini!', 'error');
+                    }
+
+                    const totalMenitNow = (jamNow * 60) + menitNow;
+                    const batasMenitMasuk = (shiftCfg.jamMasuk * 60) + shiftCfg.menitMasuk + (shiftCfg.toleransi || 0);
+                    let isLate = totalMenitNow > batasMenitMasuk;
+                    let status = isLate ? 'Terlambat' : 'Hadir';
+
+                    const newLog = {
+                        id: serverResult.log_id || Date.now(),
+                        userId: currentUser.id,
+                        nama: currentUser.nama,
+                        jabatan: currentUser.jabatan,
+                        tglMasuk: currentUser.tglMasuk,
+                        shift: currentUser.shift || 'pagi',
+                        status: status,
+                        waktuMasuk: waktuStr,
+                        waktuPulang: '-',
+                        tanggal: todayStr,
+                        lokasi: currentGPS,
+                        gpsLat: currentLat,
+                        gpsLng: currentLng,
+                        gpsAccuracy: currentGPSAccuracy,
+                        jarakMeter: currentGPSDistance,
+                        kantorNama: kantorTervalidasi,
+                        kantorId: currentNearestOffice ? currentNearestOffice.office.id : null
+                    };
+
+                    absensiLogs.unshift(newLog);
+                    saveLogsToStorage();
+                    showAlert(isLate ? `Terlambat! (Batas masuk Shift ${shiftCfg.label}: ${shiftCfg.labelMasuk}). Tercatat Masuk pukul ${waktuStr}` : `Berhasil Absen Masuk pukul ${waktuStr} (Shift ${shiftCfg.label})`, isLate ? 'error' : 'success');
+
+                } else if (tipe === 'Pulang') {
+                    if (!existingRecord) {
+                        if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
+                        return showAlert('<b>Gagal Pulang!</b> Anda belum melakukan Absen Masuk hari ini.', 'error');
+                    }
+                    if (existingRecord.waktuPulang && existingRecord.waktuPulang !== '-') {
+                        if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
+                        return showAlert('Anda sudah Absen Pulang untuk hari ini!', 'error');
+                    }
+
+                    const totalMenitNow2 = (jamNow * 60) + menitNow;
+                    const batasMenitPulang = (shiftCfg.jamPulang * 60) + shiftCfg.menitPulang;
+                    if (totalMenitNow2 < batasMenitPulang) {
+                        if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
+                        return showAlert(`<b>Belum Waktunya Pulang!</b> Absen Pulang Shift ${shiftCfg.label} hanya bisa dilakukan mulai pukul ${shiftCfg.labelPulang}.`, 'error');
+                    }
+
+                    existingRecord.waktuPulang = waktuStr;
+                    saveLogsToStorage();
+
+                    const jamKerja = hitungDurasiKerja(existingRecord.waktuMasuk, waktuStr);
+                    showAlert(`Berhasil Absen Pulang pukul ${waktuStr}. Total Jam Kerja: <b>${jamKerja}</b>`, 'success');
                 }
 
-                // VALIDASI LICIK 2: Sudah Absen Pulang sebelumnya
-                if (existingRecord.waktuPulang !== '-') {
-                    return showAlert('Anda sudah Absen Pulang untuk hari ini!', 'error');
-                }
+                renderMyStats();
 
-                // VALIDASI LICIK 3: Jam Pulang Minimal sesuai shift staff (Pagi 16:00 / Siang 21:00), memastikan 8 jam kerja terpenuhi
-                const totalMenitNow2 = (jamNow * 60) + menitNow;
-                const batasMenitPulang = (shiftCfg.jamPulang * 60) + shiftCfg.menitPulang;
-                if (totalMenitNow2 < batasMenitPulang) {
-                    return showAlert(`<b>Belum Waktunya Pulang!</b> Absen Pulang Shift ${shiftCfg.label} hanya bisa dilakukan mulai pukul ${shiftCfg.labelPulang}.`, 'error');
-                }
-
-                // Update jam pulang record hari ini
-                existingRecord.waktuPulang = waktuStr;
-                saveLogsToStorage();
-                
-                const jamKerja = hitungDurasiKerja(existingRecord.waktuMasuk, waktuStr);
-                showAlert(`Berhasil Absen Pulang pukul ${waktuStr}. Total Jam Kerja: <b>${jamKerja}</b>`, 'success');
+            } catch (err) {
+                showAlert(`<b>${err.message}</b>`, 'error');
+            } finally {
+                if (btnAbsenEl) { btnAbsenEl.disabled = false; btnAbsenEl.innerHTML = btnAbsenEl.dataset.originalHtml || btnAbsenEl.innerHTML; }
             }
-
-            renderMyStats();
         }
 
         // Kategori izin tidak masuk (dipakai untuk kalender & rekap HRD/Admin)
@@ -1179,16 +1128,30 @@ function toggleSidebar(show) {
             const now = new Date();
             const todayStr = now.toISOString().split('T')[0];
 
-            let suratDokter = null;
+            let suratDokterLocal = null;
+            let suratNama = null;
+            let suratUrl = null;
             if (jenis === 'Sakit') {
                 const file = fileInput.files[0];
                 if (!file) { showAlert('Surat dokter wajib diupload untuk pengajuan Sakit!'); return; }
                 if (file.size > 4 * 1024 * 1024) { showAlert('Ukuran file surat dokter maksimal 4MB.'); return; }
+                // Upload ke Supabase Storage
                 try {
+                    const uploadResult = await sbUploadSuratDokter(file, currentUser.company_id, currentUser.id);
+                    suratNama = uploadResult.name;
+                    suratUrl = uploadResult.url;
+                    // Juga simpan sebagai dataURL untuk preview lokal
                     const dataUrl = await readFileAsDataURL(file);
-                    suratDokter = { name: file.name, type: file.type, dataUrl: dataUrl };
+                    suratDokterLocal = { name: file.name, type: file.type, dataUrl: dataUrl, url: suratUrl };
                 } catch (err) {
-                    showAlert('Gagal membaca file surat dokter.'); return;
+                    // Fallback: simpan sebagai dataURL lokal saja
+                    try {
+                        const dataUrl = await readFileAsDataURL(file);
+                        suratDokterLocal = { name: file.name, type: file.type, dataUrl: dataUrl };
+                        suratNama = file.name;
+                    } catch (e) {
+                        showAlert('Gagal membaca file surat dokter.'); return;
+                    }
                 }
             }
 
@@ -1198,7 +1161,27 @@ function toggleSidebar(show) {
                 tglMulai = document.getElementById('tglMulaiIzin').value || todayStr;
                 tglSelesai = document.getElementById('tglSelesaiIzin').value || todayStr;
                 if (tglSelesai < tglMulai) { showAlert('Tanggal selesai tidak boleh sebelum tanggal mulai.'); return; }
-                jumlahHari = hitungJumlahHari(tglMulai, tglSelesai);
+            jumlahHari = hitungJumlahHari(tglMulai, tglSelesai);
+            }
+
+            // Simpan ke Supabase
+            try {
+                await sbSubmitIzin({
+                    companyId: currentUser.company_id,
+                    userId: currentUser.id,
+                    nama: currentUser.nama,
+                    jabatan: currentUser.jabatan,
+                    status: jenis,
+                    tanggal: tglMulai,
+                    tanggalSelesai: tglSelesai,
+                    jumlahHari,
+                    kategoriIzin,
+                    alasan,
+                    suratNama,
+                    suratUrl
+                });
+            } catch (err) {
+                console.error('Gagal simpan izin ke Supabase:', err);
             }
 
             const newLog = {
@@ -1215,7 +1198,7 @@ function toggleSidebar(show) {
                 jumlahHari: jenis === 'Izin' ? jumlahHari : 1,
                 kategoriIzin: kategoriIzin,
                 lokasi: 'Keterangan: ' + alasan,
-                suratDokter: suratDokter,
+                suratDokter: suratDokterLocal,
                 statusVerifikasi: jenis === 'Sakit' ? 'Menunggu Verifikasi' : null,
                 catatanVerifikasi: '',
                 verifikatorNama: ''
@@ -1225,7 +1208,7 @@ function toggleSidebar(show) {
             saveLogsToStorage();
             const kategoriMsg = kategoriIzin ? ` (${t(KATEGORI_IZIN_LABEL[kategoriIzin] || kategoriIzin)}, ${jumlahHari} ${t('hari')})` : '';
             const jenisLabel = { Izin: t('Izin'), Sakit: t('Sakit'), Hadir: t('Hadir') }[jenis] || jenis;
-            showAlert(`${t('Pengajuan')} ${jenisLabel}${kategoriMsg} ${t('berhasil dikirim!')}` + (suratDokter ? ' ' + t('Surat dokter akan diverifikasi HRD/Admin.') : ''), 'success');
+            showAlert(`${t('Pengajuan')} ${jenisLabel}${kategoriMsg} ${t('berhasil dikirim!')}` + (suratDokterLocal ? ' ' + t('Surat dokter akan diverifikasi HRD/Admin.') : ''), 'success');
             fileInput.value = '';
             document.getElementById('alasanIzin').value = '';
             renderMyStats();
@@ -1289,14 +1272,14 @@ function toggleSidebar(show) {
             }
 
             displayedLogs.forEach(log => {
-                let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">HADIR</span>`;
-                if(log.status === 'Terlambat') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 animate-pulse">TERLAMBAT</span>`;
-                if(log.status === 'Izin') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">IZIN</span>`;
+                let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">${t('HADIR')}</span>`;
+                if(log.status === 'Terlambat') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 animate-pulse">${t('TERLAMBAT')}</span>`;
+                if(log.status === 'Izin') statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">${t('IZIN')}</span>`;
                 if(log.status === 'Sakit') {
-                    statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">SAKIT</span>`;
-                    if (log.statusVerifikasi === 'Menunggu Verifikasi') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">SURAT PENDING</span>`;
-                    else if (log.statusVerifikasi === 'Disetujui') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">SURAT OK</span>`;
-                    else if (log.statusVerifikasi === 'Ditolak') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">SURAT DITOLAK</span>`;
+                    statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">${t('SAKIT')}</span>`;
+                    if (log.statusVerifikasi === 'Menunggu Verifikasi') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">${t('SURAT PENDING')}</span>`;
+                    else if (log.statusVerifikasi === 'Disetujui') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">${t('SURAT OK')}</span>`;
+                    else if (log.statusVerifikasi === 'Ditolak') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">${t('SURAT DITOLAK')}</span>`;
                 }
 
                 const masaKerja = hitungMasaKerja(log.tglMasuk);
@@ -1424,7 +1407,7 @@ function toggleSidebar(show) {
         let editingOfficeId = null; // null = mode tambah baru, isi id = mode edit kantor tsb
 
         async function renderLokasiKantorForm() {
-            await loadOfficeLocationsFromServer(); // selalu ambil data terbaru dari database
+            await loadOfficeLocationsFromServer(); // selalu ambil data terbaru dari Supabase
             renderLokasiKantorList();
             resetFormKantor();
         }
@@ -1529,25 +1512,18 @@ function toggleSidebar(show) {
 
             try {
                 const isEdit = !!editingOfficeId;
-                const res = await fetch(`${API_BASE_URL}/office_locations.php`, {
-                    method: isEdit ? 'PUT' : 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(isEdit
-                        ? { id: editingOfficeId, nama, alamat, lat, lng, radius }
-                        : { nama, alamat, lat, lng, radius })
-                });
-                const json = await res.json();
-                if (!json.success) {
-                    if (btnSubmit) btnSubmit.disabled = false;
-                    return showAlert(json.message || 'Gagal menyimpan data kantor.', 'error');
+                if (isEdit) {
+                    await sbUpdateOfficeLocation({ id: editingOfficeId, nama, alamat, lat, lng, radius });
+                    showAlert(`Kantor "${nama}" berhasil diperbarui.`, 'success');
+                } else {
+                    await sbAddOfficeLocation({ nama, alamat, lat, lng, radius });
+                    showAlert(`Kantor "${nama}" berhasil ditambahkan.`, 'success');
                 }
-                showAlert(json.message, 'success');
                 await loadOfficeLocationsFromServer();
                 resetFormKantor();
                 renderLokasiKantorList();
             } catch (err) {
-                showAlert('<b>Gagal terhubung ke server.</b> Pastikan backend PHP aktif dan API_BASE_URL sudah benar.', 'error');
+                showAlert(err.message || 'Gagal menyimpan data kantor.', 'error');
             } finally {
                 if (btnSubmit) btnSubmit.disabled = false;
             }
@@ -1559,22 +1535,13 @@ function toggleSidebar(show) {
             if (!confirm(`Hapus kantor "${office.nama}"?`)) return;
 
             try {
-                const res = await fetch(`${API_BASE_URL}/office_locations.php`, {
-                    method: 'DELETE',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id })
-                });
-                const json = await res.json();
-                if (!json.success) {
-                    return showAlert(json.message || 'Gagal menghapus kantor.', 'error');
-                }
+                await sbDeleteOfficeLocation(id);
                 await loadOfficeLocationsFromServer();
                 if (String(editingOfficeId) === String(id)) resetFormKantor();
                 renderLokasiKantorList();
-                showAlert(json.message, 'success');
+                showAlert(`Kantor "${office.nama}" berhasil dihapus.`, 'success');
             } catch (err) {
-                showAlert('<b>Gagal terhubung ke server.</b> Pastikan backend PHP aktif dan API_BASE_URL sudah benar.', 'error');
+                showAlert(err.message || 'Gagal menghapus kantor.', 'error');
             }
         }
 
@@ -1614,6 +1581,33 @@ function toggleSidebar(show) {
         }
 
         function renderAdminUsers() {
+            const tbody = document.getElementById('adminUserTable');
+            tbody.innerHTML = '<tr><td colspan="9" class="p-4 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat data karyawan...</td></tr>';
+            // Load dari Supabase
+            sbGetCompanyUsers().then(sbUsers => {
+                // Sinkronkan array users lokal dengan data Supabase
+                users = sbUsers.map(u => ({
+                    id: u.employee_id || u.id,
+                    supabaseId: u.id,
+                    nama: u.nama,
+                    jabatan: u.jabatan,
+                    role: u.role,
+                    shift: u.shift || 'pagi',
+                    jatahCuti: u.jatah_cuti ?? 12,
+                    allowChangePassword: !!u.allow_change_password,
+                    tglMasuk: u.tgl_masuk,
+                    is_active: u.is_active
+                }));
+                saveUsersToStorage();
+                _renderAdminUsersTable();
+            }).catch(err => {
+                console.error('Gagal load users dari Supabase:', err);
+                _renderAdminUsersTable(); // fallback ke data lokal
+            });
+            renderTodayStats();
+        }
+
+        function _renderAdminUsersTable() {
             const tbody = document.getElementById('adminUserTable');
             tbody.innerHTML = '';
             users.forEach(u => {
@@ -1689,24 +1683,42 @@ function toggleSidebar(show) {
             setText('statTodayBelum', belumAbsen);
         }
 
-        function addUser(e) {
+        async function addUser(e) {
             e.preventDefault();
-            const newUser = {
-                id: document.getElementById('addId').value.trim(),
-                nama: document.getElementById('addNama').value.trim(),
-                jabatan: document.getElementById('addJabatan').value.trim(),
-                tglMasuk: document.getElementById('addTglMasuk').value,
-                username: document.getElementById('addUsername').value.trim(),
-                pass: "123456",
-                role: document.getElementById('addRole').value,
-                shift: document.getElementById('addShift').value,
-                allowChangePassword: false,
-                jatahCuti: parseInt(document.getElementById('addJatahCuti').value, 10) || 12
-            };
-            users.push(newUser);
-            saveUsersToStorage();
-            renderAdminUsers();
-            showAlert(`User <b>${newUser.nama}</b> berhasil ditambahkan (Shift ${getShiftConfig(newUser).label})!`, 'success');
+            if (!currentUser) return;
+            const email    = document.getElementById('addUsername').value.trim();
+            const nama     = document.getElementById('addNama').value.trim();
+            const jabatan  = document.getElementById('addJabatan').value.trim();
+            const role     = document.getElementById('addRole').value;
+            const shift    = document.getElementById('addShift').value;
+            const tglMasuk = document.getElementById('addTglMasuk').value;
+            const jatahCuti = parseInt(document.getElementById('addJatahCuti').value, 10) || 12;
+            const employeeId = document.getElementById('addId').value.trim();
+            const defaultPassword = 'AbsensiPro@2024!'; // password sementara, karyawan wajib ganti
+
+            if (!email || !nama) { showAlert('Nama dan email wajib diisi.'); return; }
+
+            const btnSubmit = e.target.querySelector('button[type="submit"]');
+            if (btnSubmit) { btnSubmit.disabled = true; btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Menyimpan...'; }
+
+            try {
+                await sbAdminAddUser({
+                    nama, jabatan, role, shift,
+                    jatah_cuti: jatahCuti,
+                    tgl_masuk: tglMasuk || new Date().toISOString().split('T')[0],
+                    employee_id: employeeId,
+                    email,
+                    password: defaultPassword,
+                    companyId: currentUser.company_id
+                });
+                e.target.reset();
+                renderAdminUsers();
+                showAlert(`Karyawan <b>${nama}</b> berhasil ditambahkan! Password sementara: <b>${defaultPassword}</b> — minta karyawan segera ganti setelah login pertama.`, 'success');
+            } catch (err) {
+                showAlert('<b>Gagal:</b> ' + err.message, 'error');
+            } finally {
+                if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = '<i class="fa-solid fa-user-plus mr-1"></i>Tambah Karyawan'; }
+            }
         }
 
         // ================== MANAJEMEN SHIFT KERJA (ADMIN) ==================
@@ -1723,26 +1735,41 @@ function toggleSidebar(show) {
             document.getElementById('shiftModal').classList.add('hidden');
             activeShiftUserId = null;
         }
-        function saveShiftChange() {
+        async function saveShiftChange() {
             const u = users.find(x => x.id === activeShiftUserId);
             if (!u) return;
-            u.shift = document.getElementById('shiftModalSelect').value;
-            saveUsersToStorage();
-            closeShiftModal();
-            renderAdminUsers();
-            showAlert(`Shift <b>${u.nama}</b> berhasil diubah menjadi Shift <b>${getShiftConfig(u).label}</b> (${getShiftConfig(u).labelMasuk} - ${getShiftConfig(u).labelPulang}).`, 'success');
-            // Jika staff yang shift-nya diubah sedang login di tab ini, sinkronkan tampilannya
-            if (currentUser && currentUser.id === u.id) {
-                currentUser.shift = u.shift;
-                setupKaryawanView();
+            const newShift = document.getElementById('shiftModalSelect').value;
+            const supabaseId = u.supabaseId || u.id;
+            try {
+                await sbUpdateUserProfile(supabaseId, { shift: newShift });
+                u.shift = newShift;
+                saveUsersToStorage();
+                closeShiftModal();
+                renderAdminUsers();
+                showAlert(`Shift <b>${u.nama}</b> berhasil diubah menjadi Shift <b>${getShiftConfig(u).label}</b> (${getShiftConfig(u).labelMasuk} - ${getShiftConfig(u).labelPulang}).`, 'success');
+                if (currentUser && currentUser.id === u.id) {
+                    currentUser.shift = u.shift;
+                    setupKaryawanView();
+                }
+            } catch (err) {
+                showAlert('Gagal ubah shift: ' + err.message, 'error');
             }
         }
 
-        function deleteUser(id) {
-            users = users.filter(u => u.id !== id);
-            saveUsersToStorage();
-            renderAdminUsers();
-            showAlert('User berhasil dihapus.');
+        async function deleteUser(id) {
+            if (!confirm('Nonaktifkan karyawan ini? Mereka tidak akan bisa login lagi.')) return;
+            // Cari supabaseId (UUID) dari user berdasarkan id lokal
+            const u = users.find(x => x.id === id);
+            const supabaseId = u ? (u.supabaseId || u.id) : id;
+            try {
+                await sbDeactivateUser(supabaseId);
+                users = users.filter(u => u.id !== id);
+                saveUsersToStorage();
+                renderAdminUsers();
+                showAlert('Karyawan berhasil dinonaktifkan.', 'success');
+            } catch (err) {
+                showAlert('Gagal menonaktifkan karyawan: ' + err.message, 'error');
+            }
         }
 
         // ================== MANAJEMEN PASSWORD OLEH ADMIN (LANGSUNG, TANPA APPROVAL) ==================
@@ -1760,20 +1787,33 @@ function toggleSidebar(show) {
             document.getElementById('passwordModal').classList.add('hidden');
             activePasswordUserId = null;
         }
-        function savePasswordChangeByAdmin() {
+        async function savePasswordChangeByAdmin() {
             const u = users.find(x => x.id === activePasswordUserId);
             if (!u) return;
             const newPass = document.getElementById('passwordModalInput').value.trim();
             const allow = document.getElementById('passwordModalAllow').checked;
-            u.allowChangePassword = allow;
-            if (newPass) {
-                if (newPass.length < 4) { showAlert('Password baru minimal 4 karakter.'); return; }
-                u.pass = newPass;
+            const supabaseId = u.supabaseId || u.id;
+
+            try {
+                // Update allow_change_password di Supabase profiles
+                await sbUpdateUserProfile(supabaseId, { allow_change_password: allow });
+                u.allowChangePassword = allow;
+
+                if (newPass) {
+                    if (newPass.length < 6) { showAlert('Password baru minimal 6 karakter.'); return; }
+                    // Catatan: Supabase admin password reset hanya bisa via service_role.
+                    // Simpan flag must_change_password agar karyawan diminta ganti saat login.
+                    await sbUpdateUserProfile(supabaseId, { must_change_password: true });
+                    showAlert(`Flag "wajib ganti password" diaktifkan untuk <b>${u.nama}</b>. Hubungi karyawan untuk reset via email.`, 'success');
+                }
+
+                saveUsersToStorage();
+                closePasswordModal();
+                renderAdminUsers();
+                if (!newPass) showAlert(`Pengaturan izin password <b>${u.nama}</b> berhasil disimpan.`, 'success');
+            } catch (err) {
+                showAlert('Gagal: ' + err.message, 'error');
             }
-            saveUsersToStorage();
-            closePasswordModal();
-            renderAdminUsers();
-            showAlert(`Pengaturan password <b>${u.nama}</b> berhasil disimpan${newPass ? ' (password baru diterapkan)' : ''}.`, 'success');
         }
 
         // ================== PERMINTAAN GANTI PASSWORD OLEH KARYAWAN (BUTUH PERSETUJUAN) ==================
@@ -2094,19 +2134,25 @@ function toggleSidebar(show) {
             document.getElementById('cutiModal').classList.add('hidden');
             activeCutiUserId = null;
         }
-        function saveCutiChange() {
+        async function saveCutiChange() {
             const u = users.find(x => x.id === activeCutiUserId);
             if (!u) return;
             const val = parseInt(document.getElementById('cutiModalInput').value, 10);
             if (isNaN(val) || val < 0) { showAlert('Jatah cuti harus berupa angka 0 atau lebih.'); return; }
-            u.jatahCuti = val;
-            saveUsersToStorage();
-            closeCutiModal();
-            renderAdminUsers();
-            showAlert(`Jatah cuti tahunan <b>${u.nama}</b> berhasil diubah menjadi <b>${val} hari</b>.`, 'success');
-            if (currentUser && currentUser.id === u.id) {
-                currentUser.jatahCuti = u.jatahCuti;
-                renderMyStats();
+            const supabaseId = u.supabaseId || u.id;
+            try {
+                await sbUpdateUserProfile(supabaseId, { jatah_cuti: val });
+                u.jatahCuti = val;
+                saveUsersToStorage();
+                closeCutiModal();
+                renderAdminUsers();
+                showAlert(`Jatah cuti tahunan <b>${u.nama}</b> berhasil diubah menjadi <b>${val} hari</b>.`, 'success');
+                if (currentUser && currentUser.id === u.id) {
+                    currentUser.jatahCuti = val;
+                    renderMyStats();
+                }
+            } catch (err) {
+                showAlert('Gagal ubah jatah cuti: ' + err.message, 'error');
             }
         }
 
@@ -2136,12 +2182,22 @@ function toggleSidebar(show) {
             if (typeof renderTable === 'function') { try { renderTable(); } catch (e) {} }
             if (typeof renderTodayStats === 'function') { try { renderTodayStats(); } catch (e) {} }
         }
+        window.onLanguageChanged = onLanguageChanged;
 
         function showForgotPasswordModal() { document.getElementById('forgotModal').classList.remove('hidden'); }
         function closeForgotModal() { document.getElementById('forgotModal').classList.add('hidden'); }
-        function handleForgotSubmit() {
+        async function handleForgotSubmit() {
             const val = document.getElementById('forgotEmail').value.trim();
-            if(!val) return alert('Isi email/username');
-            closeForgotModal();
-            showAlert(`Sistem mengirim link reset password ke email (${val}).`, 'success');
+            if (!val) return showAlert('Isi email terlebih dahulu.');
+            const btn = document.getElementById('forgotSubmitBtn');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Mengirim...'; }
+            try {
+                await sbForgotPassword(val);
+                closeForgotModal();
+                showAlert(`Link reset password telah dikirim ke <b>${val}</b>. Periksa kotak masuk email Anda.`, 'success');
+            } catch (err) {
+                showAlert('Gagal: ' + err.message, 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = 'Kirim Link Reset'; }
+            }
         }

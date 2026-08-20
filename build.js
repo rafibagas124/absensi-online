@@ -1,46 +1,42 @@
 /**
- * build.js — Build & obfuscation pipeline untuk AbsensiPro (versi flat)
+ * build.js — Build & obfuscation pipeline untuk AbsensiPro (ES Module)
  *
- * Source (index.html, app.js, protect.js, service-worker.js, manifest.json,
+ * Source (index.html, app.js, supabase_client.js, protect.js, service-worker.js, manifest.json,
  * icons/) ada langsung di root folder ini — TETAP EDIT DI SINI seperti biasa.
  *
  * `npm run build` akan menghasilkan folder `dist/` berisi versi
- * ter-obfuscate yang siap di-deploy. Folder `dist/` di-generate otomatis,
- * jangan diedit manual, dan sudah di-ignore oleh .gitignore.
- *
- * Jalankan:
- *   npm install
- *   npm run build
+ * ter-obfuscate yang siap di-deploy ke Vercel/GitHub Pages/Hosting.
  */
 
-const fs = require('fs');
-const path = require('path');
-const JavaScriptObfuscator = require('javascript-obfuscator');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import JavaScriptObfuscator from 'javascript-obfuscator';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const ROOT_DIR = __dirname;
 const DIST_DIR = path.join(__dirname, 'dist');
 
-// File-file source yang dibaca langsung dari root (bukan dari sub-folder)
 const FILES = {
   html: 'index.html',
   manifest: 'manifest.json',
   icons: 'icons',
   app: 'app.js',
+  supabaseClient: 'supabase_client.js',
   protect: 'protect.js',
   serviceWorker: 'service-worker.js',
   i18n: 'i18n.js',
 };
 
-// ---------------------------------------------------------------------------
-// Konfigurasi obfuscator "tinggi" untuk kode yang jalan di context browser
-// biasa (index.html): app.js (logika utama) dan protect.js (anti-debug).
-// ---------------------------------------------------------------------------
+// Konfigurasi obfuscator "tinggi" untuk kode browser: app.js, protect.js, supabase_client.js
 const BROWSER_OPTIONS = {
   compact: true,
   controlFlowFlattening: true,
   controlFlowFlatteningThreshold: 0.75,
   deadCodeInjection: true,
-  deadCodeInjectionThreshold: 0.4,
+  deadCodeInjectionThreshold: 0.35,
   debugProtection: true,
   debugProtectionInterval: 4000,
   disableConsoleOutput: true,
@@ -59,18 +55,12 @@ const BROWSER_OPTIONS = {
   target: 'browser',
 };
 
-// ---------------------------------------------------------------------------
-// Konfigurasi lebih "aman" khusus untuk service-worker.js.
-// selfDefending & debugProtection SENGAJA dimatikan (context worker tidak
-// punya `window`, trik eval/Function-nya berisiko merusak registrasi SW).
-// Caching/precache/fetch tetap 100% berjalan seperti aslinya.
-// ---------------------------------------------------------------------------
+// Konfigurasi aman untuk service-worker.js
 const SERVICE_WORKER_OPTIONS = {
   compact: true,
   controlFlowFlattening: true,
-  controlFlowFlatteningThreshold: 0.5,
-  deadCodeInjection: true,
-  deadCodeInjectionThreshold: 0.2,
+  controlFlowFlatteningThreshold: 0.4,
+  deadCodeInjection: false,
   debugProtection: false,
   disableConsoleOutput: false,
   identifierNamesGenerator: 'hexadecimal',
@@ -84,45 +74,58 @@ const SERVICE_WORKER_OPTIONS = {
 };
 
 function obfuscateFile(srcFile, destFile, options) {
+  if (!fs.existsSync(srcFile)) {
+    console.warn(`  [SKIP] File tidak ditemukan: ${path.basename(srcFile)}`);
+    return;
+  }
   const code = fs.readFileSync(srcFile, 'utf8');
   const result = JavaScriptObfuscator.obfuscate(code, options);
   fs.writeFileSync(destFile, result.getObfuscatedCode(), 'utf8');
-  console.log(`  obfuscated: ${path.basename(srcFile)} -> dist/${path.basename(destFile)}`);
+  console.log(`  ✓ obfuscated: ${path.basename(srcFile)} -> dist/${path.basename(destFile)}`);
+}
+
+function copyFileIfExists(srcFile, destFile) {
+  if (fs.existsSync(srcFile)) {
+    fs.copyFileSync(srcFile, destFile);
+    console.log(`  ✓ copied: ${path.basename(srcFile)} -> dist/${path.basename(destFile)}`);
+  }
 }
 
 function main() {
-  console.log('== AbsensiPro build ==');
+  console.log('== AbsensiPro Build & Obfuscate Pipeline ==');
 
   // 1. Bersihkan folder dist/ lama
   fs.rmSync(DIST_DIR, { recursive: true, force: true });
   fs.mkdirSync(DIST_DIR, { recursive: true });
   console.log('1. dist/ dibersihkan');
 
-  // 2. Salin file statis apa adanya (TIDAK diobfuscate)
-  fs.copyFileSync(path.join(ROOT_DIR, FILES.html), path.join(DIST_DIR, FILES.html));
-  fs.copyFileSync(path.join(ROOT_DIR, FILES.manifest), path.join(DIST_DIR, FILES.manifest));
+  // 2. Salin file statis
+  console.log('2. Menyalin asset & file statis...');
+  copyFileIfExists(path.join(ROOT_DIR, FILES.html), path.join(DIST_DIR, FILES.html));
+  copyFileIfExists(path.join(ROOT_DIR, FILES.manifest), path.join(DIST_DIR, FILES.manifest));
+  copyFileIfExists(path.join(ROOT_DIR, FILES.i18n), path.join(DIST_DIR, FILES.i18n));
+
   const iconsDir = path.join(ROOT_DIR, FILES.icons);
   if (fs.existsSync(iconsDir)) {
     fs.cpSync(iconsDir, path.join(DIST_DIR, FILES.icons), { recursive: true });
+    console.log('  ✓ copied: icons/ -> dist/icons/');
   }
-  fs.copyFileSync(path.join(ROOT_DIR, FILES.i18n), path.join(DIST_DIR, FILES.i18n));
-  console.log('2. index.html, manifest.json, icons/, i18n.js disalin');
 
-  // 3. Obfuscate app.js & protect.js (proteksi tinggi)
-  console.log('3. Meng-obfuscate JavaScript (proteksi tinggi)...');
+  // 3. Obfuscate script JavaScript penting
+  console.log('3. Meng-obfuscate JavaScript (Proteksi Tinggi)...');
   obfuscateFile(path.join(ROOT_DIR, FILES.app), path.join(DIST_DIR, FILES.app), BROWSER_OPTIONS);
   obfuscateFile(path.join(ROOT_DIR, FILES.protect), path.join(DIST_DIR, FILES.protect), BROWSER_OPTIONS);
+  obfuscateFile(path.join(ROOT_DIR, FILES.supabaseClient), path.join(DIST_DIR, FILES.supabaseClient), BROWSER_OPTIONS);
 
-  // 4. Obfuscate service-worker.js (opsi aman, tidak merusak PWA)
-  console.log('4. Meng-obfuscate service-worker.js (opsi aman untuk PWA)...');
+  // 4. Obfuscate service-worker.js
+  console.log('4. Meng-obfuscate service-worker.js (PWA safe mode)...');
   obfuscateFile(
     path.join(ROOT_DIR, FILES.serviceWorker),
     path.join(DIST_DIR, FILES.serviceWorker),
     SERVICE_WORKER_OPTIONS
   );
 
-  console.log('\nBuild selesai. Folder siap deploy: ./dist');
-  console.log('(Folder ini yang di-upload ke Vercel/Netlify/GitHub Pages, BUKAN root project)');
+  console.log('\n[SUCCESS] Build selesai! Folder siap deploy: ./dist\n');
 }
 
 main();

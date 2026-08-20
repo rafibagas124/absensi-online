@@ -31,6 +31,8 @@
     <!-- i18next: mesin multi-bahasa (ISO 639-1: id = Indonesia, en = English) -->
     <script src="https://cdn.jsdelivr.net/npm/i18next@23/dist/umd/i18next.min.js"></script>
     <script src="./i18n.js"></script>
+    <!-- Supabase JS SDK (Auth + Database + Storage) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         @media print {
             .no-print { display: none !important; }
@@ -382,10 +384,13 @@
                 <div id="regStep4" class="hidden max-w-md w-full text-center py-10">
                     <i class="fa-solid fa-circle-check text-emerald-500 text-5xl mb-4"></i>
                     <h3 class="font-bold text-lg text-slate-800">Pendaftaran Berhasil!</h3>
-                    <p class="text-sm text-slate-500 mt-2">Email Anda berhasil diverifikasi dan akun perusahaan sudah aktif. Silakan masuk menggunakan akun Admin baru Anda.</p>
+                    <p class="text-sm text-slate-500 mt-2">Akun perusahaan Anda sudah aktif. Silakan masuk menggunakan akun Admin baru Anda.</p>
                     <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-left">
                         <p class="text-xs text-amber-800"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Simpan Kode Perusahaan Anda, dibutuhkan setiap kali login (dari perangkat manapun):</p>
                         <p class="text-lg font-bold text-amber-900 tracking-wider mt-1" id="finishCompanyCode">-</p>
+                    </div>
+                    <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-left">
+                        <p class="text-xs text-blue-800"><i class="fa-solid fa-circle-info mr-1"></i> <b>Catatan:</b> Jika Supabase meminta konfirmasi email, cek folder masuk atau spam email Anda, lalu klik link konfirmasinya sebelum login. Atau minta Admin Supabase untuk mematikan fitur konfirmasi email di dashboard.</p>
                     </div>
                     <button type="button" onclick="backToLoginFromRegister()" class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition">Ke Halaman Masuk</button>
                 </div>
@@ -1245,12 +1250,12 @@
     <!-- MODAL LUPA PASSWORD -->
     <div id="forgotModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
-            <h3 class="font-bold text-base text-slate-800">Lupa Password Akun?</h3>
-            <p class="text-xs text-slate-500">Masukkan email atau username yang terdaftar. Kami akan mengirimkan simulasi link reset password.</p>
-            <input type="text" id="forgotEmail" class="w-full px-3 py-2 border rounded-lg text-xs outline-none" placeholder="Email / Username Anda">
+            <h3 class="font-bold text-base text-slate-800">Lupa Password?</h3>
+            <p class="text-xs text-slate-500">Masukkan email yang terdaftar. Kami akan mengirimkan link reset password ke email Anda.</p>
+            <input type="email" id="forgotEmail" class="w-full px-3 py-2 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500" placeholder="emailanda@gmail.com">
             <div class="flex justify-end space-x-2 pt-2">
                 <button onclick="closeForgotModal()" class="px-3 py-1.5 text-xs rounded-lg border text-slate-600 hover:bg-slate-100">Batal</button>
-                <button onclick="handleForgotSubmit()" class="px-4 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium">Kirim Token</button>
+                <button id="forgotSubmitBtn" onclick="handleForgotSubmit()" class="px-4 py-1.5 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium">Kirim Link Reset</button>
             </div>
         </div>
     </div>
@@ -1261,6 +1266,7 @@
     </footer>
 
     <!-- JAVASCRIPT LOGIC -->
+    <script src="./supabase_client.js"></script>
     <script src="./app.js"></script>
     <!-- ======== PWA: registrasi Service Worker (agar bisa di-install & tetap terbuka saat offline) ======== -->
     <script>
