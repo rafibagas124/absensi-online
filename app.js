@@ -972,8 +972,8 @@ function toggleSidebar(show) {
 
         // Image Preprocessing: Adaptive Histogram / Gamma CLAHE filter untuk lingkungan gelap
         function applyImagePreprocessing(sourceVideo, brightness) {
-            const w = 224;
-            const h = Math.round(224 * (sourceVideo.videoHeight / (sourceVideo.videoWidth || 1))) || 168;
+            const w = 320;
+            const h = Math.round(320 * (sourceVideo.videoHeight / (sourceVideo.videoWidth || 1))) || 240;
             preprocCanvas.width = w;
             preprocCanvas.height = h;
             preprocCtx.drawImage(sourceVideo, 0, 0, w, h);
@@ -1016,9 +1016,9 @@ function toggleSidebar(show) {
             banner.classList.remove('hidden');
             let colorClass = 'bg-amber-50 border-amber-300 text-amber-800';
             let icon = 'fa-triangle-exclamation text-amber-600';
-            if (type === 'dark' || type === 'mask') {
+            if (type === 'dark' || type === 'mask' || type === 'glasses') {
                 colorClass = 'bg-rose-50 border-rose-300 text-rose-800';
-                icon = type === 'mask' ? 'fa-mask text-rose-600' : 'fa-moon text-rose-600';
+                icon = type === 'mask' ? 'fa-mask text-rose-600' : (type === 'glasses' ? 'fa-glasses text-rose-600' : 'fa-moon text-rose-600');
             }
             banner.className = `mt-3 p-3 rounded-lg text-xs font-medium flex items-center gap-2.5 transition-all border ${colorClass}`;
             banner.innerHTML = `<i class="fa-solid ${icon} text-base shrink-0"></i><span>${text}</span>`;
@@ -1029,16 +1029,75 @@ function toggleSidebar(show) {
             if (banner) banner.classList.add('hidden');
         }
 
-        // Inspeksi Oklusi & Masker berdasarkan analisis 68 titik Landmark Wajah
-        function inspectFaceOcclusion(detection, video) {
+        // Hitung statistik luminance, deviasi standar (kontras/tekstur), dan rata-rata warna pada region canvas
+        function getCanvasRegionStats(ctx, x, y, w, h, canvasW, canvasH) {
+            const rx = Math.max(0, Math.min(canvasW - 1, Math.round(x)));
+            const ry = Math.max(0, Math.min(canvasH - 1, Math.round(y)));
+            const rw = Math.max(2, Math.min(canvasW - rx, Math.round(w)));
+            const rh = Math.max(2, Math.min(canvasH - ry, Math.round(h)));
+
+            try {
+                const imgData = ctx.getImageData(rx, ry, rw, rh);
+                const d = imgData.data;
+                const len = d.length;
+                if (len === 0) return { meanLuma: 128, stdDev: 0, rAvg: 128, gAvg: 128, bAvg: 128 };
+
+                let totalLuma = 0;
+                let totalR = 0, totalG = 0, totalB = 0;
+                const n = len / 4;
+                const lumas = new Float32Array(n);
+
+                let pIdx = 0;
+                for (let i = 0; i < len; i += 4) {
+                    const r = d[i], g = d[i+1], b = d[i+2];
+                    const luma = (0.299 * r) + (0.587 * g) + (0.114 * b);
+                    lumas[pIdx++] = luma;
+                    totalLuma += luma;
+                    totalR += r;
+                    totalG += g;
+                    totalB += b;
+                }
+
+                const meanLuma = totalLuma / n;
+                let varianceSum = 0;
+                for (let i = 0; i < n; i++) {
+                    const diff = lumas[i] - meanLuma;
+                    varianceSum += diff * diff;
+                }
+                const stdDev = Math.sqrt(varianceSum / n);
+                return {
+                    meanLuma,
+                    stdDev,
+                    rAvg: totalR / n,
+                    gAvg: totalG / n,
+                    bAvg: totalB / n
+                };
+            } catch (e) {
+                return { meanLuma: 128, stdDev: 0, rAvg: 128, gAvg: 128, bAvg: 128 };
+            }
+        }
+
+        // Inspeksi Ketat Oklusi, Masker, Tangan Menutup Wajah, & Kacamata Hitam
+        function inspectFaceOcclusion(detection, video, canvasCtx, canvasW, canvasH) {
             if (!detection || !detection.landmarks) {
-                return { isOccluded: true, type: 'unclear', reason: 'Landmark wajah tidak terdeteksi' };
+                return { isOccluded: true, type: 'unclear', reason: t('Landmark wajah tidak terdeteksi') };
             }
 
             const pts = detection.landmarks.positions;
             const box = detection.detection.box;
             const score = detection.detection.score;
 
+            // 1. Skor Deteksi Global: Wajah yang tertutup tangan/kain akan kehilangan confidence
+            if (score < 0.60) {
+                return { isOccluded: true, type: 'unclear', reason: t('Wajah tertutup atau kurang jelas') };
+            }
+
+            const relativeArea = (box.width * box.height) / (video.videoWidth * video.videoHeight || 1);
+            if (relativeArea < 0.035) {
+                return { isOccluded: true, type: 'too_small', reason: t('Wajah terlalu jauh / kecil') };
+            }
+
+            // Titik-titik penting landmark 68
             const noseTip = pts[33];
             const chin = pts[8];
             const mouthLeft = pts[48];
@@ -1046,28 +1105,81 @@ function toggleSidebar(show) {
             const mouthTop = pts[51];
             const mouthBottom = pts[57];
 
+            // Hitung Pusat Mata Kiri & Kanan (Landmark 36-41 & 42-47)
+            let lx = 0, ly = 0, rx = 0, ry = 0;
+            for (let i = 36; i <= 41; i++) { rx += pts[i].x; ry += pts[i].y; }
+            for (let i = 42; i <= 47; i++) { lx += pts[i].x; ly += pts[i].y; }
+            const rightEye = { x: rx / 6, y: ry / 6 };
+            const leftEye = { x: lx / 6, y: ly / 6 };
+
+            // Interpupillary distance (jarak antar pupil)
+            const ipd = Math.hypot(leftEye.x - rightEye.x, leftEye.y - rightEye.y);
+            if (ipd < 20) {
+                return { isOccluded: true, type: 'too_small', reason: t('Wajah terlalu jauh / kecil') };
+            }
+
+            // 2. Eye Aspect Ratio (EAR) untuk mengecek bukaan mata
+            const earRight = (Math.hypot(pts[37].x - pts[41].x, pts[37].y - pts[41].y) + Math.hypot(pts[38].x - pts[40].x, pts[38].y - pts[40].y)) / (2 * (Math.hypot(pts[36].x - pts[39].x, pts[36].y - pts[39].y) || 1));
+            const earLeft = (Math.hypot(pts[43].x - pts[47].x, pts[43].y - pts[47].y) + Math.hypot(pts[44].x - pts[46].x, pts[44].y - pts[46].y)) / (2 * (Math.hypot(pts[42].x - pts[45].x, pts[42].y - pts[45].y) || 1));
+
+            // 3. Analisis Proporsi Geometri Hidung & Mulut
             const mouthWidth = Math.hypot(mouthRight.x - mouthLeft.x, mouthRight.y - mouthLeft.y);
             const mouthHeight = Math.hypot(mouthBottom.x - mouthTop.x, mouthBottom.y - mouthTop.y);
+            const noseWidth = Math.hypot(pts[35].x - pts[31].x, pts[35].y - pts[31].y);
             const noseToMouthDist = Math.hypot(mouthTop.x - noseTip.x, mouthTop.y - noseTip.y);
+            const mouthToChinDist = Math.hypot(chin.x - mouthBottom.x, chin.y - mouthBottom.y);
 
-            const relativeArea = (box.width * box.height) / (video.videoWidth * video.videoHeight || 1);
-            if (relativeArea < 0.03) {
-                return { isOccluded: true, type: 'too_small', reason: 'Wajah terlalu jauh / kecil' };
+            const mouthIpdRatio = mouthWidth / ipd;
+            const noseIpdRatio = noseWidth / ipd;
+            const noseMouthRatio = noseToMouthDist / ipd;
+            const mouthChinRatio = mouthToChinDist / ipd;
+
+            // Jika tangan menutupi hidung/mulut, koordinat landmark terdistorsi drastis
+            const isGeometryAbnormal = (mouthIpdRatio < 0.48 || mouthIpdRatio > 1.60 || noseMouthRatio < 0.13 || noseIpdRatio < 0.22 || mouthChinRatio < 0.12);
+
+            // 4. Analisis Piksel & Tekstur Canvas Nyata
+            if (canvasCtx && canvasW && canvasH) {
+                // Sampel dahi sebagai referensi kulit alami
+                const fX = (leftEye.x + rightEye.x) / 2 - ipd * 0.2;
+                const fY = Math.min(leftEye.y, rightEye.y) - ipd * 0.35;
+                const fW = ipd * 0.4;
+                const fH = ipd * 0.25;
+                const foreheadStats = getCanvasRegionStats(canvasCtx, fX, fY, fW, fH, canvasW, canvasH);
+
+                // Sampel area kedua mata (Deteksi Kacamata Hitam / Penutup Mata)
+                const leStats = getCanvasRegionStats(canvasCtx, leftEye.x - ipd * 0.22, leftEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
+                const reStats = getCanvasRegionStats(canvasCtx, rightEye.x - ipd * 0.22, rightEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
+
+                if (foreheadStats.meanLuma > 45) {
+                    const isDarkSunglasses = (leStats.meanLuma < foreheadStats.meanLuma * 0.40 && reStats.meanLuma < foreheadStats.meanLuma * 0.40) ||
+                                           (leStats.meanLuma < 35 && reStats.meanLuma < 35 && foreheadStats.meanLuma > 65);
+                    if (isDarkSunglasses) {
+                        return { isOccluded: true, type: 'glasses', reason: t('Mohon lepas kacamata hitam / penutup mata Anda') };
+                    }
+                }
+
+                // Sampel area mulut & hidung (Deteksi Tangan / Masker)
+                const mX = (mouthLeft.x + mouthRight.x) / 2 - mouthWidth * 0.45;
+                const mY = (mouthTop.y + mouthBottom.y) / 2 - Math.max(mouthHeight, ipd * 0.15);
+                const mW = mouthWidth * 0.9;
+                const mH = Math.max(mouthHeight * 2, ipd * 0.3);
+                const mouthStats = getCanvasRegionStats(canvasCtx, mX, mY, mW, mH, canvasW, canvasH);
+
+                // Pada wajah terbuka asli, area bibir/mulut memiliki variasi kontras/tekstur tinggi.
+                // Ketika tertutup masker polos atau tangan, tekstur bibir menjadi seragam/hilang.
+                const isTextureFlat = (mouthStats.stdDev < 8.2) || (mouthStats.stdDev < 11.0 && score < 0.78);
+
+                if (isGeometryAbnormal || isTextureFlat) {
+                    return { isOccluded: true, type: 'mask', reason: t('Mohon lepas masker / jauhkan tangan dari wajah') };
+                }
+            } else {
+                if (isGeometryAbnormal || (score < 0.68 && mouthIpdRatio < 0.60)) {
+                    return { isOccluded: true, type: 'mask', reason: t('Mohon lepas masker / jauhkan tangan dari wajah') };
+                }
             }
 
-            // Heuristik Masker / Oklusi Bagian Bawah Wajah:
-            const mouthBoxRatio = mouthWidth / (box.width || 1);
-            const mouthHeightBoxRatio = mouthHeight / (box.height || 1);
-            const noseMouthRatio = noseToMouthDist / (box.height || 1);
-
-            const isMaskProbable = (mouthBoxRatio < 0.14) || (mouthHeightBoxRatio < 0.025) || (noseMouthRatio < 0.045) || (score < 0.58 && mouthBoxRatio < 0.22);
-
-            if (isMaskProbable) {
-                return { isOccluded: true, type: 'mask', reason: t('Mohon lepas masker/penutup wajah Anda') };
-            }
-
-            if (score < 0.55) {
-                return { isOccluded: true, type: 'unclear', reason: t('Wajah tertutup atau kurang jelas') };
+            if (earLeft < 0.07 && earRight < 0.07) {
+                return { isOccluded: true, type: 'eyes_closed', reason: t('Mata tertutup / tidak terlihat jelas') };
             }
 
             return { isOccluded: false, type: 'none', reason: t('Wajah terlihat jelas') };
@@ -1112,7 +1224,7 @@ function toggleSidebar(show) {
             try {
                 const processSource = applyImagePreprocessing(video, brightness);
                 const detection = await faceapi
-                    .detectSingleFace(processSource, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.38 }))
+                    .detectSingleFace(processSource, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.48 }))
                     .withFaceLandmarks(true);
 
                 if (!detection) {
@@ -1130,23 +1242,27 @@ function toggleSidebar(show) {
 
                 faceState.faceDetected = true;
                 faceState.score = detection.detection.score;
-                setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Terdeteksi')} (${Math.round(faceState.score*100)}%)`, 'bg-emerald-600/85 text-white');
 
-                // Analisis Landmark 68 Titik untuk deteksi masker & oklusi
-                const occCheck = inspectFaceOcclusion(detection, video);
+                // Analisis Landmark 68 Titik & Tekstur Piksel untuk deteksi masker, tangan menutup wajah, & kacamata hitam
+                const occCheck = inspectFaceOcclusion(detection, video, preprocCtx, preprocCanvas.width, preprocCanvas.height);
                 faceState.occluded = occCheck.isOccluded;
                 faceState.occlusionType = occCheck.type;
 
                 if (faceState.occluded) {
+                    setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Tidak Valid')} (${Math.round(faceState.score*100)}%)`, 'bg-amber-600/85 text-white');
                     if (occCheck.type === 'mask') {
-                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Terdeteksi Masker')}`, 'bg-red-600/85 text-white');
-                        showAiWarning(t('Mohon lepas masker/penutup wajah Anda'), 'mask');
+                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Tertutup / Masker')}`, 'bg-red-600/85 text-white');
+                        showAiWarning(occCheck.reason || t('Mohon lepas masker / jauhkan tangan dari wajah'), 'mask');
+                    } else if (occCheck.type === 'glasses') {
+                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-glasses mr-1"></i>${t('Oklusi: Kacamata Hitam')}`, 'bg-red-600/85 text-white');
+                        showAiWarning(occCheck.reason || t('Mohon lepas kacamata hitam / penutup mata Anda'), 'glasses');
                     } else {
-                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Tertutup/Kurang Jelas')}`, 'bg-red-600/85 text-white');
-                        showAiWarning(occCheck.reason, 'occluded');
+                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Kurang Jelas')}`, 'bg-red-600/85 text-white');
+                        showAiWarning(occCheck.reason || t('Wajah tertutup atau kurang jelas'), 'occluded');
                     }
                 } else {
-                    setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Terlihat Jelas')}`, 'bg-emerald-600/85 text-white');
+                    setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Terdeteksi')} (${Math.round(faceState.score*100)}%)`, 'bg-emerald-600/85 text-white');
+                    setAiBadge('badgeOcclusion', `<i class="fa-solid fa-circle-check mr-1"></i>${t('Oklusi: Wajah Terlihat Jelas')}`, 'bg-emerald-600/85 text-white');
                     if (faceState.wellLit) {
                         hideAiWarning();
                     }
@@ -1303,9 +1419,15 @@ function toggleSidebar(show) {
             }
             if (faceState.occluded) {
                 if (faceState.occlusionType === 'mask') {
-                    return showAlert(`<b>${t('Mohon lepas masker/penutup wajah Anda')}</b>`);
+                    return showAlert(`<b>${t('Wajah Terhalang!')}</b> ${t('Mohon lepas masker / jauhkan tangan dari wajah')}`);
                 }
-                return showAlert('<b>Wajah terhalang!</b> Pastikan wajah tidak tertutup masker/tangan/topi dan terlihat jelas oleh kamera.');
+                if (faceState.occlusionType === 'glasses') {
+                    return showAlert(`<b>${t('Area Mata Terhalang!')}</b> ${t('Mohon lepas kacamata hitam / penutup mata Anda')}`);
+                }
+                if (faceState.occlusionType === 'eyes_closed') {
+                    return showAlert(`<b>${t('Mata Tidak Terlihat!')}</b> ${t('Buka mata Anda dan pastikan area mata terlihat jelas oleh kamera.')}`);
+                }
+                return showAlert('<b>Wajah terhalang!</b> Pastikan seluruh wajah (mata, hidung, mulut) terlihat jelas dan tidak tertutup tangan/masker/kacamata hitam.');
             }
             if (!faceState.wellLit) {
                 if (faceState.lightStatus === 'dark') {
