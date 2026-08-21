@@ -380,14 +380,11 @@ function toggleSidebar(show) {
             showAlert('Anda telah keluar dari sistem.', 'success');
         }
 
+        let currentActiveTab = 'absen';
+
         function checkSession(shouldSwitchTab = true) {
             const authWrap = document.getElementById('authWrapper');
             const appWrap = document.getElementById('appWrapper');
-            const karySec = document.getElementById('karyawanSection');
-            const hrdSec = document.getElementById('hrdSection');
-            const admSec = document.getElementById('adminSection');
-            const shiftSec = document.getElementById('shiftMasterSection');
-            const lokasiSec = document.getElementById('lokasiKantorSection');
 
             const btnPanel = document.getElementById('btnTabPanel');
             const btnVerif = document.getElementById('btnTabVerifikasi');
@@ -399,42 +396,19 @@ function toggleSidebar(show) {
             const btnSecurityLog = document.getElementById('btnTabSecurityLog');
             const btnBackup = document.getElementById('btnTabBackup');
             const masterLabel = document.getElementById('masterDataLabel');
-            const kalenderSec = document.getElementById('kalenderSection');
-            const pwReqSec = document.getElementById('passReqSection');
-            const secLogSec = document.getElementById('securityLogSection');
-            const backupSec = document.getElementById('backupSection');
-
-            karySec.classList.add('hidden');
-            hrdSec.classList.add('hidden');
-            admSec.classList.add('hidden');
-            shiftSec.classList.add('hidden');
-            lokasiSec.classList.add('hidden');
-            if (kalenderSec) kalenderSec.classList.add('hidden');
-            if (pwReqSec) pwReqSec.classList.add('hidden');
-            if (secLogSec) secLogSec.classList.add('hidden');
-            if (backupSec) backupSec.classList.add('hidden');
-
-            btnPanel.classList.add('hidden');
-            btnVerif.classList.add('hidden');
-            btnShiftMaster.classList.add('hidden');
-            btnUsers.classList.add('hidden');
-            btnLokasi.classList.add('hidden');
-            if (btnKalender) btnKalender.classList.add('hidden');
-            if (btnPwReq) btnPwReq.classList.add('hidden');
-            if (btnSecurityLog) btnSecurityLog.classList.add('hidden');
-            if (btnBackup) btnBackup.classList.add('hidden');
-            masterLabel.classList.add('hidden');
 
             if(!currentUser) {
-                authWrap.classList.remove('hidden');
-                appWrap.classList.add('hidden');
+                if (authWrap) authWrap.classList.remove('hidden');
+                if (appWrap) appWrap.classList.add('hidden');
                 return;
             }
 
-            authWrap.classList.add('hidden');
-            appWrap.classList.remove('hidden');
-            document.getElementById('navUserName').innerText = currentUser.nama;
-            document.getElementById('navUserRole').innerText = roleLabel(currentUser.role);
+            if (authWrap) authWrap.classList.add('hidden');
+            if (appWrap) appWrap.classList.remove('hidden');
+            const navUserEl = document.getElementById('navUserName');
+            const navRoleEl = document.getElementById('navUserRole');
+            if (navUserEl) navUserEl.innerText = currentUser.nama;
+            if (navRoleEl) navRoleEl.innerText = roleLabel(currentUser.role);
 
             // Tampilkan info tenant / perusahaan aktif (Multi-Tenant SaaS)
             const tenantBadge = document.getElementById('tenantInfoBadge');
@@ -453,37 +427,55 @@ function toggleSidebar(show) {
             const monTitle = document.getElementById('monitoringSectionTitle');
             const monDesc = document.getElementById('monitoringSectionDesc');
 
+            if (btnPanel) btnPanel.classList.add('hidden');
+            if (btnVerif) btnVerif.classList.add('hidden');
+            if (btnShiftMaster) btnShiftMaster.classList.add('hidden');
+            if (btnUsers) btnUsers.classList.add('hidden');
+            if (btnLokasi) btnLokasi.classList.add('hidden');
+            if (btnKalender) btnKalender.classList.add('hidden');
+            if (btnPwReq) btnPwReq.classList.add('hidden');
+            if (btnSecurityLog) btnSecurityLog.classList.add('hidden');
+            if (btnBackup) btnBackup.classList.add('hidden');
+            if (masterLabel) masterLabel.classList.add('hidden');
+
             // Role-based view & dashboard configuration
             if(currentUser.role === 'karyawan' || currentUser.role === 'staff' || currentUser.role === 'magang') {
                 if (shouldSwitchTab) switchMainTab('absen');
+                else switchMainTab(currentActiveTab === 'absen' ? 'absen' : 'absen');
             } else if(currentUser.role === 'hrd') {
-                btnPanel.classList.remove('hidden');
-                btnUsers.classList.remove('hidden');
-                btnVerif.classList.remove('hidden');
+                if (btnPanel) btnPanel.classList.remove('hidden');
+                if (btnUsers) btnUsers.classList.remove('hidden');
+                if (btnVerif) btnVerif.classList.remove('hidden');
                 if (btnKalender) btnKalender.classList.remove('hidden');
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
-                masterLabel.classList.remove('hidden');
-                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line w-4";
-                document.getElementById('lblTabPanelText').innerText = t("Dashboard HRD");
+                if (masterLabel) masterLabel.classList.remove('hidden');
+                const lblIcon = document.getElementById('lblTabPanelIcon');
+                const lblTxt = document.getElementById('lblTabPanelText');
+                if (lblIcon) lblIcon.className = "fa-solid fa-chart-line w-4";
+                if (lblTxt) lblTxt.innerText = t("Dashboard HRD");
                 if (monTitle) monTitle.innerText = t("Dashboard HRD - Monitoring & Rekap");
                 if (monDesc) monDesc.innerText = t("Pantau kehadiran, keterlambatan, jam masuk, jam pulang, dan durasi kerja staff.");
                 if (shouldSwitchTab) switchMainTab('panel');
+                else switchMainTab(currentActiveTab || 'panel');
             } else if(currentUser.role === 'admin') {
-                btnPanel.classList.remove('hidden');
-                btnUsers.classList.remove('hidden');
-                btnVerif.classList.remove('hidden');
-                btnShiftMaster.classList.remove('hidden');
-                btnLokasi.classList.remove('hidden');
+                if (btnPanel) btnPanel.classList.remove('hidden');
+                if (btnUsers) btnUsers.classList.remove('hidden');
+                if (btnVerif) btnVerif.classList.remove('hidden');
+                if (btnShiftMaster) btnShiftMaster.classList.remove('hidden');
+                if (btnLokasi) btnLokasi.classList.remove('hidden');
                 if (btnKalender) btnKalender.classList.remove('hidden');
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
                 if (btnSecurityLog) btnSecurityLog.classList.remove('hidden');
                 if (btnBackup) btnBackup.classList.remove('hidden');
-                masterLabel.classList.remove('hidden');
-                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-pie w-4";
-                document.getElementById('lblTabPanelText').innerText = t("Dashboard Admin");
+                if (masterLabel) masterLabel.classList.remove('hidden');
+                const lblIcon = document.getElementById('lblTabPanelIcon');
+                const lblTxt = document.getElementById('lblTabPanelText');
+                if (lblIcon) lblIcon.className = "fa-solid fa-chart-pie w-4";
+                if (lblTxt) lblTxt.innerText = t("Dashboard Admin");
                 if (monTitle) monTitle.innerText = t("Dashboard Admin - Monitoring & Rekap");
                 if (monDesc) monDesc.innerText = t("Pantau kehadiran, keterlambatan, jam masuk, jam pulang, dan durasi kerja seluruh staff perusahaan.");
                 if (shouldSwitchTab) switchMainTab('panel');
+                else switchMainTab(currentActiveTab || 'panel');
             }
             updateSuratPendingBadge();
             updatePwReqBadge();
@@ -503,16 +495,23 @@ function toggleSidebar(show) {
         }
 
         function setupKaryawanView() {
-            document.getElementById('ovNama').innerText = t('Nama:') + " " + currentUser.nama;
-            document.getElementById('ovId').innerText = t('ID:') + " " + (currentUser.employee_id || currentUser.id);
-            document.getElementById('ovJabatan').innerText = t('Jabatan:') + " " + currentUser.jabatan;
-            document.getElementById('myMasaKerja').innerText = hitungMasaKerja(currentUser.tglMasuk);
+            const ovNama = document.getElementById('ovNama');
+            const ovId = document.getElementById('ovId');
+            const ovJabatan = document.getElementById('ovJabatan');
+            const myMasa = document.getElementById('myMasaKerja');
+            if (ovNama) ovNama.innerText = t('Nama:') + " " + currentUser.nama;
+            if (ovId) ovId.innerText = t('ID:') + " " + (currentUser.employee_id || currentUser.id);
+            if (ovJabatan) ovJabatan.innerText = t('Jabatan:') + " " + currentUser.jabatan;
+            if (myMasa) myMasa.innerText = hitungMasaKerja(currentUser.tglMasuk);
 
             // Tampilkan jam masuk/pulang sesuai shift staff yang login
             const shiftCfg = getShiftConfig(currentUser);
-            document.getElementById('myJamMasukLabel').innerText = shiftCfg.labelMasuk;
-            document.getElementById('myJamPulangLabel').innerText = shiftCfg.labelPulang;
-            document.getElementById('myShiftLabel').innerText = shiftCfg.label;
+            const masukLbl = document.getElementById('myJamMasukLabel');
+            const pulangLbl = document.getElementById('myJamPulangLabel');
+            const shiftLbl = document.getElementById('myShiftLabel');
+            if (masukLbl) masukLbl.innerText = shiftCfg.labelMasuk;
+            if (pulangLbl) pulangLbl.innerText = shiftCfg.labelPulang;
+            if (shiftLbl) shiftLbl.innerText = shiftCfg.label;
 
             renderMyStats();
             renderMyPasswordCard();
@@ -520,6 +519,7 @@ function toggleSidebar(show) {
         }
 
         function switchMainTab(tab) {
+            currentActiveTab = tab || 'absen';
             const karySec = document.getElementById('karyawanSection');
             const hrdSec = document.getElementById('hrdSection');
             const admSec = document.getElementById('adminSection');
@@ -532,12 +532,12 @@ function toggleSidebar(show) {
             const backupSec = document.getElementById('backupSection');
             const allBtns = ['btnTabAbsen','btnTabPanel','btnTabVerifikasi','btnTabShiftMaster','btnTabUsers','btnTabLokasi','btnTabKalender','btnTabPassReq','btnTabSecurityLog','btnTabBackup'].map(id => document.getElementById(id)).filter(Boolean);
 
-            karySec.classList.add('hidden');
-            hrdSec.classList.add('hidden');
-            admSec.classList.add('hidden');
-            verSec.classList.add('hidden');
-            shiftSec.classList.add('hidden');
-            lokasiSec.classList.add('hidden');
+            if (karySec) karySec.classList.add('hidden');
+            if (hrdSec) hrdSec.classList.add('hidden');
+            if (admSec) admSec.classList.add('hidden');
+            if (verSec) verSec.classList.add('hidden');
+            if (shiftSec) shiftSec.classList.add('hidden');
+            if (lokasiSec) lokasiSec.classList.add('hidden');
             if (kalenderSec) kalenderSec.classList.add('hidden');
             if (pwReqSec) pwReqSec.classList.add('hidden');
             if (secLogSec) secLogSec.classList.add('hidden');
@@ -545,32 +545,39 @@ function toggleSidebar(show) {
             allBtns.forEach(b => b.classList.remove('active'));
 
             if (tab === 'absen') {
-                karySec.classList.remove('hidden');
-                document.getElementById('btnTabAbsen').classList.add('active');
+                if (karySec) karySec.classList.remove('hidden');
+                const b = document.getElementById('btnTabAbsen');
+                if (b) b.classList.add('active');
                 setupKaryawanView();
             } else if (tab === 'verifikasi') {
-                verSec.classList.remove('hidden');
-                document.getElementById('btnTabVerifikasi').classList.add('active');
+                if (verSec) verSec.classList.remove('hidden');
+                const b = document.getElementById('btnTabVerifikasi');
+                if (b) b.classList.add('active');
                 renderVerifikasiSurat();
             } else if (tab === 'shiftmaster') {
-                shiftSec.classList.remove('hidden');
-                document.getElementById('btnTabShiftMaster').classList.add('active');
+                if (shiftSec) shiftSec.classList.remove('hidden');
+                const b = document.getElementById('btnTabShiftMaster');
+                if (b) b.classList.add('active');
                 renderShiftMasterTable();
             } else if (tab === 'users') {
-                admSec.classList.remove('hidden');
-                document.getElementById('btnTabUsers').classList.add('active');
+                if (admSec) admSec.classList.remove('hidden');
+                const b = document.getElementById('btnTabUsers');
+                if (b) b.classList.add('active');
                 renderAdminUsers();
             } else if (tab === 'lokasikantor') {
-                lokasiSec.classList.remove('hidden');
-                document.getElementById('btnTabLokasi').classList.add('active');
+                if (lokasiSec) lokasiSec.classList.remove('hidden');
+                const b = document.getElementById('btnTabLokasi');
+                if (b) b.classList.add('active');
                 renderLokasiKantorForm();
             } else if (tab === 'kalender') {
                 if (kalenderSec) kalenderSec.classList.remove('hidden');
-                document.getElementById('btnTabKalender').classList.add('active');
+                const b = document.getElementById('btnTabKalender');
+                if (b) b.classList.add('active');
                 renderIzinCalendar('kalender', kalenderViewDate, true);
             } else if (tab === 'passreq') {
                 if (pwReqSec) pwReqSec.classList.remove('hidden');
-                document.getElementById('btnTabPassReq').classList.add('active');
+                const b = document.getElementById('btnTabPassReq');
+                if (b) b.classList.add('active');
                 renderPasswordRequests();
             } else if (tab === 'securitylog') {
                 if (secLogSec) secLogSec.classList.remove('hidden');
@@ -582,8 +589,9 @@ function toggleSidebar(show) {
                 const b = document.getElementById('btnTabBackup');
                 if (b) b.classList.add('active');
             } else {
-                document.getElementById('btnTabPanel').classList.add('active');
-                hrdSec.classList.remove('hidden');
+                const b = document.getElementById('btnTabPanel');
+                if (b) b.classList.add('active');
+                if (hrdSec) hrdSec.classList.remove('hidden');
                 renderTable();
             }
         }
@@ -2881,8 +2889,8 @@ function toggleSidebar(show) {
         }
 
         // Dipanggil otomatis oleh i18n.js (setLanguage) setiap kali user mengganti bahasa,
-        // supaya bagian yang sudah ter-render (kalender, statistik, tabel) langsung
-        // ikut berubah bahasa tanpa perlu reload halaman.
+        // supaya bagian yang sudah ter-render (kalender, statistik, tabel, log keamanan, dsb) langsung
+        // ikut berubah bahasa tanpa perlu reload halaman dan tanpa merusak tampilan.
         function onLanguageChanged() {
             if (!currentUser) return;
             if (typeof checkSession === 'function') checkSession(false);
@@ -2891,6 +2899,10 @@ function toggleSidebar(show) {
             if (typeof updateCutiInfoForm === 'function') updateCutiInfoForm();
             if (typeof renderTable === 'function') { try { renderTable(); } catch (e) {} }
             if (typeof renderTodayStats === 'function') { try { renderTodayStats(); } catch (e) {} }
+            if (typeof renderSecurityLogs === 'function' && currentActiveTab === 'securitylog') { try { renderSecurityLogs(); } catch (e) {} }
+            if (typeof renderShiftMasterTable === 'function' && currentActiveTab === 'shiftmaster') { try { renderShiftMasterTable(); } catch (e) {} }
+            if (typeof renderAdminUsers === 'function' && currentActiveTab === 'users') { try { renderAdminUsers(); } catch (e) {} }
+            if (typeof renderLokasiKantorForm === 'function' && currentActiveTab === 'lokasikantor') { try { renderLokasiKantorForm(); } catch (e) {} }
         }
         window.onLanguageChanged = onLanguageChanged;
 
@@ -2918,7 +2930,7 @@ function toggleSidebar(show) {
         async function renderSecurityLogs() {
             const tbody = document.getElementById('securityLogTableBody');
             if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-400 italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat log keamanan...</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400 italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>${t('Memuat log keamanan...')}</td></tr>`;
 
             // Populate input konfigurasi Webhook & Sentry
             const whInput = document.getElementById('inputWebhookUrl');
@@ -2939,7 +2951,7 @@ function toggleSidebar(show) {
             if (totalWarningsEl) totalWarningsEl.innerText = logs.filter(l => l.severity === 'WARNING' || l.severity === 'CRITICAL').length;
 
             if (!logs || logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-400 italic">Belum ada aktivitas keamanan yang mencurigakan tercatat.</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400 italic">${t('Belum ada aktivitas keamanan yang mencurigakan tercatat.')}</td></tr>`;
                 return;
             }
 
@@ -2950,7 +2962,7 @@ function toggleSidebar(show) {
                 if (log.severity === 'CRITICAL') badgeClass = 'bg-red-100 text-red-800 font-bold animate-pulse';
                 if (log.severity === 'INFO') badgeClass = 'bg-blue-50 text-blue-700 font-semibold';
 
-                const timeFormatted = log.timestamp ? new Date(log.timestamp).toLocaleString(appLocale ? appLocale() : 'id-ID') : '-';
+                const timeFormatted = log.timestamp ? new Date(log.timestamp).toLocaleString(typeof appLocale === 'function' ? appLocale() : 'id-ID') : '-';
                 const detailsStr = typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details || '-');
 
                 tbody.innerHTML += `
@@ -3034,21 +3046,21 @@ function toggleSidebar(show) {
             const btn = document.getElementById('btnDownloadBackup');
             if (btn) {
                 btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Menyiapkan Snapshot Data...';
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i>${t('Menyiapkan Snapshot Data...')}`;
             }
 
             try {
-                const backup = await sbExportTenantBackup(currentUser.company_id, currentUser.company_nama || 'Perusahaan');
+                const backup = await sbExportTenantBackup(currentUser.company_id, currentUser.company_nama || t('Perusahaan'));
                 if (window.BackupEngine) {
                     window.BackupEngine.downloadBackup(backup.fileName, backup.jsonString);
                 }
-                showAlert(`Snapshot database <b>${backup.fileName}</b> berhasil diunduh! Simpan file ini di lokasi aman.`, 'success');
+                showAlert(`${t('Snapshot database')} <b>${backup.fileName}</b> ${t('berhasil diunduh! Simpan file ini di lokasi aman.')}`, 'success');
             } catch (err) {
                 showAlert('Gagal membuat backup: ' + err.message, 'error');
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Buat & Unduh Snapshot Backup';
+                    btn.innerHTML = `<i class="fa-solid fa-download mr-2"></i>${t('Buat & Unduh Snapshot Backup')}`;
                 }
             }
         }
@@ -3064,26 +3076,27 @@ function toggleSidebar(show) {
                     const json = JSON.parse(evt.target.result);
                     if (!json.metadata || !json.tables) {
                         resultBox.className = 'p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 space-y-1';
-                        resultBox.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> File JSON bukan format snapshot AbsensiPro yang valid.';
+                        resultBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${t('File JSON bukan format snapshot AbsensiPro yang valid.')}`;
                         resultBox.classList.remove('hidden');
                         return;
                     }
 
+                    const formattedDate = json.metadata.backupDate ? new Date(json.metadata.backupDate).toLocaleString(typeof appLocale === 'function' ? appLocale() : 'id-ID') : '-';
                     resultBox.className = 'p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1';
                     resultBox.innerHTML = `
-                        <p class="font-bold"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> File Backup Terverifikasi Valid</p>
-                        <p>Perusahaan: <b>${json.metadata.companyName || '-'}</b> (ID: ${json.metadata.companyId || '-'})</p>
-                        <p>Tanggal Dibuat: <b>${json.metadata.backupDate ? new Date(json.metadata.backupDate).toLocaleString() : '-'}</b></p>
+                        <p class="font-bold"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> ${t('File Backup Terverifikasi Valid')}</p>
+                        <p>${t('Perusahaan')}: <b>${json.metadata.companyName || '-'}</b> (ID: ${json.metadata.companyId || '-'})</p>
+                        <p>${t('Tanggal Dibuat:')} <b>${formattedDate}</b></p>
                         <p class="text-[11px] text-emerald-700 pt-1">
-                            • Staff: ${(json.tables.profiles || []).length} entri |
-                            • Log Absen: ${(json.tables.attendance_logs || []).length} entri |
-                            • Kantor: ${(json.tables.office_locations || []).length} entri
+                            • ${t('Staff')}: ${(json.tables.profiles || []).length} ${t('entri')} |
+                            • ${t('Log Absen')}: ${(json.tables.attendance_logs || []).length} ${t('entri')} |
+                            • ${t('Lokasi Kantor')}: ${(json.tables.office_locations || []).length} ${t('entri')}
                         </p>
                     `;
                     resultBox.classList.remove('hidden');
                 } catch (err) {
                     resultBox.className = 'p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 space-y-1';
-                    resultBox.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Gagal membaca file JSON: format rusak.';
+                    resultBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${t('Gagal membaca file JSON: format rusak.')}`;
                     resultBox.classList.remove('hidden');
                 }
             };
