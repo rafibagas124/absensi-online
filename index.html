@@ -495,10 +495,32 @@
 
         <!-- 2. PANEL KARYAWAN (DAPAT DIAKSES OLEH KARYAWAN, HRD, & ADMIN) -->
         <section id="karyawanSection" class="hidden space-y-6">
+            <!-- BANNER OFFLINE & SINKRONISASI PWA -->
+            <div id="offlineSyncBanner" class="hidden p-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl shadow flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2">
+                    <span class="p-2 bg-white/20 rounded-lg"><i class="fa-solid fa-wifi-slash text-base"></i></span>
+                    <div>
+                        <p class="font-bold text-sm" id="offlineBannerTitle">Mode Offline Aktif</p>
+                        <p class="text-amber-100 text-[11px]" id="offlineBannerDesc">Koneksi internet terputus. Absensi tetap dapat dilakukan dan tersimpan di memori perangkat.</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="offlineQueueBadge" class="bg-black/30 px-2.5 py-1 rounded-full font-bold text-[11px]">0 antrean offline</span>
+                    <button type="button" id="btnManualSync" onclick="syncOfflineQueueManual()" class="bg-white text-amber-700 hover:bg-amber-50 font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-rotate mr-1"></i> Sinkronkan Data Offline
+                    </button>
+                </div>
+            </div>
+
             <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 class="text-xl font-bold text-slate-800">Presensi Wajah & GPS</h1>
-                    <p class="text-xs text-slate-500">Masa Kerja: <span id="myMasaKerja" class="font-semibold text-blue-600">-</span></p>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-xl font-bold text-slate-800">Presensi Wajah & GPS</h1>
+                        <span id="netStatusPill" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300">
+                            <i class="fa-solid fa-circle text-[7px] mr-1"></i> Online
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-0.5">Masa Kerja: <span id="myMasaKerja" class="font-semibold text-blue-600">-</span></p>
                 </div>
                 <div class="flex flex-wrap gap-2 text-xs">
                     <span class="bg-blue-50 border border-blue-200 text-blue-800 px-3 py-1.5 rounded-lg">
@@ -516,7 +538,12 @@
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- KAMERA CONTAINER -->
                 <div class="lg:col-span-2 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                    <h3 class="font-bold text-sm text-slate-700 mb-3"><i class="fa-solid fa-camera text-blue-600 mr-2"></i>Kamera Absensi</h3>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-bold text-sm text-slate-700"><i class="fa-solid fa-camera text-blue-600 mr-2"></i>Kamera Absensi</h3>
+                        <span id="badgeClahe" class="hidden text-[10px] font-bold px-2.5 py-1 rounded-full bg-cyan-600 text-white shadow-sm animate-pulse">
+                            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Pencahayaan Adaptif (CLAHE)
+                        </span>
+                    </div>
                     
                     <div class="relative bg-black rounded-lg overflow-hidden aspect-video flex items-center justify-center">
                         <video id="webcam" autoplay playsinline class="w-full h-full object-cover"></video>
@@ -551,7 +578,10 @@
                         </div>
                     </div>
 
-                    <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI akan memindai wajah, oklusi (wajah tertutup), dan kondisi cahaya secara live sebelum absen bisa dikirim.</p>
+                    <!-- LIVE INSTRUCTION BANNER (LOW LIGHT & MASK / OCCLUSION) -->
+                    <div id="aiWarningBanner" class="hidden mt-3 p-3 rounded-lg text-xs font-medium flex items-center gap-2.5 transition-all"></div>
+
+                    <p class="mt-2 text-[10px] text-slate-500"><i class="fa-solid fa-circle-info mr-1"></i>Sistem AI memindai kecerahan (luma < 40), titik landmark wajah (deteksi masker/oklusi), serta mendukung absensi offline jika koneksi terputus.</p>
 
                     <!-- Mobile (<640px): grid 2 kolom sama rata biar rapi & sejajar -->
                     <!-- Desktop (>=640px): balik jadi flex satu baris urut normal -->

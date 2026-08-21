@@ -176,9 +176,11 @@ function toggleSidebar(show) {
             saveUsersToStorage();
             restoreSessionFromServer(); // cek sesi login ke Supabase, lalu panggil checkSession()
             loadOfficeLocationsFromServer(); // ambil daftar kantor dari Supabase
+            updateOfflineUI(); // inisialisasi status koneksi & antrean offline PWA
             setInterval(updateOverlayTime, 1000);
             setTimeout(loadFaceModels, 800); // preload model AI di background
             setTimeout(initGoogleSignIn, 500); // tunggu script Google Identity Services siap
+            setTimeout(() => syncOfflineQueue(false), 2500); // otomatis sinkron antrean offline jika ada saat start
         });
 
         function saveUsersToStorage() { localStorage.setItem('absensi_users', JSON.stringify(users)); }
@@ -666,6 +668,206 @@ function toggleSidebar(show) {
             }
         }
 
+        // ================== PWA & OFFLINE QUEUE (INDEXEDDB) ==================
+        const OFFLINE_DB_NAME = 'AbsensiProDB';
+        const OFFLINE_STORE_NAME = 'attendance_offline_queue';
+        const OFFLINE_DB_VERSION = 1;
+
+        function openOfflineDB() {
+            return new Promise((resolve, reject) => {
+                if (!('indexedDB' in window)) {
+                    return reject(new Error('IndexedDB tidak didukung pada browser ini'));
+                }
+                const request = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(OFFLINE_STORE_NAME)) {
+                        db.createObjectStore(OFFLINE_STORE_NAME, { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function saveOfflineAttendance(record) {
+            try {
+                const db = await openOfflineDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(OFFLINE_STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(OFFLINE_STORE_NAME);
+                    store.put(record);
+                    tx.oncomplete = () => {
+                        updateOfflineUI();
+                        resolve(true);
+                    };
+                    tx.onerror = () => reject(tx.error);
+                });
+            } catch (e) {
+                try {
+                    const queue = JSON.parse(localStorage.getItem('absensi_offline_queue') || '[]');
+                    queue.push(record);
+                    localStorage.setItem('absensi_offline_queue', JSON.stringify(queue));
+                    updateOfflineUI();
+                    return true;
+                } catch (err) {
+                    return false;
+                }
+            }
+        }
+
+        async function getOfflineAttendanceQueue() {
+            try {
+                const db = await openOfflineDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(OFFLINE_STORE_NAME, 'readonly');
+                    const store = tx.objectStore(OFFLINE_STORE_NAME);
+                    const req = store.getAll();
+                    req.onsuccess = () => {
+                        let list = req.result || [];
+                        try {
+                            const localQueue = JSON.parse(localStorage.getItem('absensi_offline_queue') || '[]');
+                            if (localQueue.length > 0) {
+                                list = list.concat(localQueue);
+                            }
+                        } catch(e) {}
+                        resolve(list);
+                    };
+                    req.onerror = () => resolve([]);
+                });
+            } catch (e) {
+                try {
+                    return JSON.parse(localStorage.getItem('absensi_offline_queue') || '[]');
+                } catch(err) {
+                    return [];
+                }
+            }
+        }
+
+        async function deleteOfflineAttendance(id) {
+            try {
+                const db = await openOfflineDB();
+                const tx = db.transaction(OFFLINE_STORE_NAME, 'readwrite');
+                const store = tx.objectStore(OFFLINE_STORE_NAME);
+                store.delete(id);
+            } catch (e) {}
+            try {
+                let localQueue = JSON.parse(localStorage.getItem('absensi_offline_queue') || '[]');
+                localQueue = localQueue.filter(item => item.id !== id);
+                localStorage.setItem('absensi_offline_queue', JSON.stringify(localQueue));
+            } catch (e) {}
+            updateOfflineUI();
+        }
+
+        async function updateOfflineUI() {
+            const queue = await getOfflineAttendanceQueue();
+            const count = queue.length;
+            const banner = document.getElementById('offlineSyncBanner');
+            const badge = document.getElementById('offlineQueueBadge');
+            const pill = document.getElementById('netStatusPill');
+
+            const isOnline = navigator.onLine;
+
+            if (pill) {
+                if (isOnline) {
+                    pill.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300';
+                    pill.innerHTML = `<i class="fa-solid fa-circle text-[7px] mr-1"></i>${t('Online (Terhubung)')}`;
+                } else {
+                    pill.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 animate-pulse';
+                    pill.innerHTML = `<i class="fa-solid fa-wifi-slash text-[8px] mr-1"></i>${t('Mode Offline (Internet Terputus)')}`;
+                }
+            }
+
+            if (banner) {
+                if (!isOnline || count > 0) {
+                    banner.classList.remove('hidden');
+                    if (badge) badge.innerText = `${count} ${t('antrean offline')}`;
+                    const titleEl = document.getElementById('offlineBannerTitle');
+                    const descEl = document.getElementById('offlineBannerDesc');
+                    if (titleEl) titleEl.innerText = !isOnline ? t('Mode Offline Aktif') : t('Data Offline Tersimpan');
+                    if (descEl) descEl.innerText = !isOnline 
+                        ? t('Koneksi internet terputus. Absensi tetap dapat dilakukan dan tersimpan di memori perangkat.')
+                        : t('Terdapat data absensi offline yang belum disinkronkan ke server.');
+                } else {
+                    banner.classList.add('hidden');
+                }
+            }
+        }
+
+        let isSyncingOffline = false;
+        async function syncOfflineQueue(isManual = false) {
+            if (isSyncingOffline) return;
+            if (!navigator.onLine) {
+                if (isManual) showAlert(t('Tidak dapat menyinkronkan: Perangkat masih dalam kondisi offline.'), 'error');
+                return;
+            }
+            const queue = await getOfflineAttendanceQueue();
+            if (!queue || queue.length === 0) {
+                if (isManual) showAlert(t('Tidak ada data absensi offline yang perlu disinkronkan.'), 'info');
+                return;
+            }
+
+            isSyncingOffline = true;
+            const btnSync = document.getElementById('btnManualSync');
+            if (btnSync) {
+                btnSync.disabled = true;
+                btnSync.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>${t('Menyinkronkan presensi offline...')}`;
+            }
+
+            let successCount = 0;
+            let failedCount = 0;
+
+            for (const item of queue) {
+                try {
+                    await sbSubmitAbsen({
+                        tipe: item.tipe,
+                        lat: item.lat,
+                        lng: item.lng,
+                        accuracy: item.accuracy,
+                        companyId: item.companyId,
+                        userId: item.userId,
+                        nama: item.nama,
+                        jabatan: item.jabatan,
+                        nearestOffice: item.nearestOffice
+                    });
+                    await deleteOfflineAttendance(item.id);
+                    successCount++;
+                } catch (err) {
+                    console.error('Gagal sinkronisasi item offline:', item.id, err);
+                    failedCount++;
+                }
+            }
+
+            if (btnSync) {
+                btnSync.disabled = false;
+                btnSync.innerHTML = `<i class="fa-solid fa-rotate mr-1"></i>${t('Sinkronkan Data Offline')}`;
+            }
+            isSyncingOffline = false;
+            await updateOfflineUI();
+
+            if (successCount > 0) {
+                showAlert(`<b>${t('Sinkronisasi selesai:')}</b> ${successCount} ${t('data presensi offline berhasil dikirim ke server.')}${failedCount > 0 ? ` (${failedCount} gagal, akan dicoba lagi)` : ''}`, 'success');
+                if (currentUser) {
+                    fetchAttendanceLogs();
+                    renderMyStats();
+                }
+            }
+        }
+
+        function syncOfflineQueueManual() {
+            syncOfflineQueue(true);
+        }
+
+        window.addEventListener('online', () => {
+            updateOfflineUI();
+            showAlert('Koneksi internet kembali pulih. Menyinkronkan data offline...', 'info');
+            setTimeout(() => syncOfflineQueue(false), 1200);
+        });
+
+        window.addEventListener('offline', () => {
+            updateOfflineUI();
+        });
+
         // ================== AI FACE RECOGNITION (face-api.js) ==================
         // Model dimuat dari CDN: TinyFaceDetector (deteksi wajah) + FaceLandmark68Tiny (titik wajah, untuk cek oklusi)
         const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
@@ -673,16 +875,17 @@ function toggleSidebar(show) {
         let faceModelsLoading = false;
         let faceCheckInterval = null;
         let brightnessCanvas = document.createElement('canvas');
+        let preprocCanvas = document.createElement('canvas');
+        let preprocCtx = preprocCanvas.getContext('2d', { willReadFrequently: true });
 
         // Status live hasil analisa AI, dipakai untuk gating tombol Absen Masuk/Pulang
-        let faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
+        let faceState = { faceDetected: false, occluded: true, occlusionType: 'none', wellLit: false, lightStatus: 'unknown', score: 0, brightness: 128 };
 
         async function loadFaceModels() {
             if (faceModelsLoaded || faceModelsLoading) return;
             faceModelsLoading = true;
             try {
                 if (typeof faceapi === 'undefined') {
-                    // Script CDN belum siap (defer), coba lagi sesaat lagi
                     faceModelsLoading = false;
                     setTimeout(loadFaceModels, 500);
                     return;
@@ -723,7 +926,6 @@ function toggleSidebar(show) {
                 .catch(err => showAlert('Gagal mengakses kamera: ' + err.message));
         }
 
-        // Matikan kamera sepenuhnya (stop track fisik) + kembalikan tampilan seperti semula, tanpa perlu refresh halaman
         function stopCamera() {
             const video = document.getElementById('webcam');
             const placeholder = document.getElementById('cameraPlaceholder');
@@ -733,24 +935,26 @@ function toggleSidebar(show) {
             const btnClose = document.getElementById('btnCloseCamera');
 
             if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
-            if (video) video.srcObject = null; // lepaskan referensi stream dari elemen video
+            if (video) video.srcObject = null;
             if (faceCheckInterval) { clearInterval(faceCheckInterval); faceCheckInterval = null; }
-            faceState = { faceDetected: false, occluded: true, wellLit: false, score: 0 };
+            faceState = { faceDetected: false, occluded: true, occlusionType: 'none', wellLit: false, lightStatus: 'unknown', score: 0, brightness: 128 };
+            hideAiWarning();
 
             if (placeholder) placeholder.classList.remove('hidden');
             if (overlay) overlay.classList.add('hidden');
             if (aiBar) aiBar.classList.add('hidden');
             if (btnOpen) btnOpen.classList.remove('hidden');
             if (btnClose) btnClose.classList.add('hidden');
+            const badgeClahe = document.getElementById('badgeClahe');
+            if (badgeClahe) badgeClahe.classList.add('hidden');
         }
 
-        // Dipanggil dari tombol "Matikan Kamera" (aksi manual oleh staff)
         function stopCameraManual() {
             stopCamera();
             showAlert('Kamera berhasil dimatikan. Klik "Buka Kamera" lagi saat ingin absen.', 'success');
         }
 
-        // Hitung tingkat kecerahan rata-rata frame kamera (0-255) untuk deteksi Light Detection
+        // Hitung tingkat kecerahan rata-rata frame kamera (luma: 0-255)
         function measureBrightness(video) {
             const w = 48, h = 36;
             brightnessCanvas.width = w; brightnessCanvas.height = h;
@@ -760,10 +964,43 @@ function toggleSidebar(show) {
             try { data = ctx.getImageData(0, 0, w, h).data; } catch(e) { return 128; }
             let total = 0;
             for (let i = 0; i < data.length; i += 4) {
-                // Luminance perceptual
+                // Perceptual Luminance: Y = 0.299*R + 0.587*G + 0.114*B
                 total += (0.299 * data[i]) + (0.587 * data[i+1]) + (0.114 * data[i+2]);
             }
             return total / (data.length / 4);
+        }
+
+        // Image Preprocessing: Adaptive Histogram / Gamma CLAHE filter untuk lingkungan gelap
+        function applyImagePreprocessing(sourceVideo, brightness) {
+            const w = 224;
+            const h = Math.round(224 * (sourceVideo.videoHeight / (sourceVideo.videoWidth || 1))) || 168;
+            preprocCanvas.width = w;
+            preprocCanvas.height = h;
+            preprocCtx.drawImage(sourceVideo, 0, 0, w, h);
+
+            if (brightness < 65) {
+                try {
+                    const imgData = preprocCtx.getImageData(0, 0, w, h);
+                    const d = imgData.data;
+                    const gamma = 0.60;
+                    const lut = new Uint8Array(256);
+                    for (let i = 0; i < 256; i++) {
+                        lut[i] = Math.min(255, Math.max(0, Math.round(255 * Math.pow(i / 255, gamma))));
+                    }
+                    for (let i = 0; i < d.length; i += 4) {
+                        d[i] = lut[d[i]];
+                        d[i+1] = lut[d[i+1]];
+                        d[i+2] = lut[d[i+2]];
+                    }
+                    preprocCtx.putImageData(imgData, 0, 0);
+                    const badgeClahe = document.getElementById('badgeClahe');
+                    if (badgeClahe) badgeClahe.classList.remove('hidden');
+                } catch(e) {}
+            } else {
+                const badgeClahe = document.getElementById('badgeClahe');
+                if (badgeClahe) badgeClahe.classList.add('hidden');
+            }
+            return preprocCanvas;
         }
 
         function setAiBadge(id, text, colorClass) {
@@ -773,20 +1010,90 @@ function toggleSidebar(show) {
             el.innerHTML = text;
         }
 
+        function showAiWarning(text, type) {
+            const banner = document.getElementById('aiWarningBanner');
+            if (!banner) return;
+            banner.classList.remove('hidden');
+            let colorClass = 'bg-amber-50 border-amber-300 text-amber-800';
+            let icon = 'fa-triangle-exclamation text-amber-600';
+            if (type === 'dark' || type === 'mask') {
+                colorClass = 'bg-rose-50 border-rose-300 text-rose-800';
+                icon = type === 'mask' ? 'fa-mask text-rose-600' : 'fa-moon text-rose-600';
+            }
+            banner.className = `mt-3 p-3 rounded-lg text-xs font-medium flex items-center gap-2.5 transition-all border ${colorClass}`;
+            banner.innerHTML = `<i class="fa-solid ${icon} text-base shrink-0"></i><span>${text}</span>`;
+        }
+
+        function hideAiWarning() {
+            const banner = document.getElementById('aiWarningBanner');
+            if (banner) banner.classList.add('hidden');
+        }
+
+        // Inspeksi Oklusi & Masker berdasarkan analisis 68 titik Landmark Wajah
+        function inspectFaceOcclusion(detection, video) {
+            if (!detection || !detection.landmarks) {
+                return { isOccluded: true, type: 'unclear', reason: 'Landmark wajah tidak terdeteksi' };
+            }
+
+            const pts = detection.landmarks.positions;
+            const box = detection.detection.box;
+            const score = detection.detection.score;
+
+            const noseTip = pts[33];
+            const chin = pts[8];
+            const mouthLeft = pts[48];
+            const mouthRight = pts[54];
+            const mouthTop = pts[51];
+            const mouthBottom = pts[57];
+
+            const mouthWidth = Math.hypot(mouthRight.x - mouthLeft.x, mouthRight.y - mouthLeft.y);
+            const mouthHeight = Math.hypot(mouthBottom.x - mouthTop.x, mouthBottom.y - mouthTop.y);
+            const noseToMouthDist = Math.hypot(mouthTop.x - noseTip.x, mouthTop.y - noseTip.y);
+
+            const relativeArea = (box.width * box.height) / (video.videoWidth * video.videoHeight || 1);
+            if (relativeArea < 0.03) {
+                return { isOccluded: true, type: 'too_small', reason: 'Wajah terlalu jauh / kecil' };
+            }
+
+            // Heuristik Masker / Oklusi Bagian Bawah Wajah:
+            const mouthBoxRatio = mouthWidth / (box.width || 1);
+            const mouthHeightBoxRatio = mouthHeight / (box.height || 1);
+            const noseMouthRatio = noseToMouthDist / (box.height || 1);
+
+            const isMaskProbable = (mouthBoxRatio < 0.14) || (mouthHeightBoxRatio < 0.025) || (noseMouthRatio < 0.045) || (score < 0.58 && mouthBoxRatio < 0.22);
+
+            if (isMaskProbable) {
+                return { isOccluded: true, type: 'mask', reason: t('Mohon lepas masker/penutup wajah Anda') };
+            }
+
+            if (score < 0.55) {
+                return { isOccluded: true, type: 'unclear', reason: t('Wajah tertutup atau kurang jelas') };
+            }
+
+            return { isOccluded: false, type: 'none', reason: t('Wajah terlihat jelas') };
+        }
+
         async function runFaceAnalysis() {
             const video = document.getElementById('webcam');
             if (!mediaStream || !video || video.readyState < 2) return;
 
-            // 1. LIGHT DETECTION
+            // 1. LIGHT DETECTION & PREPROCESSING
             const brightness = measureBrightness(video);
-            if (brightness < 55) {
+            faceState.brightness = brightness;
+
+            if (brightness < 40) {
                 faceState.wellLit = false;
-                setAiBadge('badgeLight', `<i class="fa-solid fa-moon mr-1"></i>${t('Cahaya: Terlalu Gelap')}`, 'bg-red-600/85 text-white');
-            } else if (brightness > 210) {
+                faceState.lightStatus = 'dark';
+                setAiBadge('badgeLight', `<i class="fa-solid fa-moon mr-1"></i>${t('Cahaya: Terlalu Gelap (< 40)')}`, 'bg-red-600/85 text-white');
+                showAiWarning(t('Ruangan terlalu gelap, cari tempat lebih terang'), 'dark');
+            } else if (brightness > 215) {
                 faceState.wellLit = false;
+                faceState.lightStatus = 'bright';
                 setAiBadge('badgeLight', `<i class="fa-solid fa-sun mr-1"></i>${t('Cahaya: Terlalu Terang')}`, 'bg-red-600/85 text-white');
+                showAiWarning(t('Pencahayaan terlalu silau/terang, posisikan kamera menjauhi lampu langsung.'), 'bright');
             } else {
                 faceState.wellLit = true;
+                faceState.lightStatus = 'good';
                 setAiBadge('badgeLight', `<i class="fa-solid fa-sun mr-1"></i>${t('Cahaya: Baik')}`, 'bg-emerald-600/85 text-white');
             }
 
@@ -801,18 +1108,23 @@ function toggleSidebar(show) {
             }
             setAiBadge('badgeModel', `<i class="fa-solid fa-microchip mr-1"></i>${t('Model AI: Aktif')}`, 'bg-slate-700/85 text-slate-200');
 
-            // 3. FACE DETECTION + LANDMARK (untuk estimasi OKLUSI)
+            // 3. FACE DETECTION & 68 LANDMARKS OCCLUSION ANALYSIS
             try {
+                const processSource = applyImagePreprocessing(video, brightness);
                 const detection = await faceapi
-                    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+                    .detectSingleFace(processSource, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.38 }))
                     .withFaceLandmarks(true);
 
                 if (!detection) {
                     faceState.faceDetected = false;
                     faceState.occluded = true;
+                    faceState.occlusionType = 'unclear';
                     faceState.score = 0;
                     setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Tidak Terdeteksi')}`, 'bg-red-600/85 text-white');
                     setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: -')}`, 'bg-slate-700/85 text-slate-200');
+                    if (faceState.wellLit) {
+                        showAiWarning(t('Posisikan wajah Anda tepat di depan kamera.'), 'occluded');
+                    }
                     return;
                 }
 
@@ -820,21 +1132,42 @@ function toggleSidebar(show) {
                 faceState.score = detection.detection.score;
                 setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Terdeteksi')} (${Math.round(faceState.score*100)}%)`, 'bg-emerald-600/85 text-white');
 
-                // Estimasi oklusi: skor confidence rendah / bbox terlalu kecil biasanya karena wajah tertutup (masker, tangan, topi, dsb)
-                const box = detection.detection.box;
-                const relativeArea = (box.width * box.height) / (video.videoWidth * video.videoHeight || 1);
-                const lowConfidence = faceState.score < 0.6;
-                const tooSmall = relativeArea < 0.03;
+                // Analisis Landmark 68 Titik untuk deteksi masker & oklusi
+                const occCheck = inspectFaceOcclusion(detection, video);
+                faceState.occluded = occCheck.isOccluded;
+                faceState.occlusionType = occCheck.type;
 
-                if (lowConfidence || tooSmall) {
-                    faceState.occluded = true;
-                    setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Tertutup/Kurang Jelas')}`, 'bg-red-600/85 text-white');
+                if (faceState.occluded) {
+                    if (occCheck.type === 'mask') {
+                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Terdeteksi Masker')}`, 'bg-red-600/85 text-white');
+                        showAiWarning(t('Mohon lepas masker/penutup wajah Anda'), 'mask');
+                    } else {
+                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Tertutup/Kurang Jelas')}`, 'bg-red-600/85 text-white');
+                        showAiWarning(occCheck.reason, 'occluded');
+                    }
                 } else {
-                    faceState.occluded = false;
                     setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Terlihat Jelas')}`, 'bg-emerald-600/85 text-white');
+                    if (faceState.wellLit) {
+                        hideAiWarning();
+                    }
                 }
             } catch (err) {
-                // error diabaikan (frame sementara tidak bisa diproses)
+                // error frame sementara diabaikan
+            }
+        }
+
+        function captureVideoSnapshot() {
+            const video = document.getElementById('webcam');
+            if (!video || video.readyState < 2) return null;
+            try {
+                const snapCanvas = document.createElement('canvas');
+                snapCanvas.width = 320;
+                snapCanvas.height = Math.round(320 * (video.videoHeight / (video.videoWidth || 1))) || 240;
+                const ctx = snapCanvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+                return snapCanvas.toDataURL('image/jpeg', 0.65);
+            } catch (e) {
+                return null;
             }
         }
 
@@ -844,8 +1177,6 @@ function toggleSidebar(show) {
         }
 
         // Menerapkan hasil koordinat (baik dari GPS otomatis maupun input manual) ke state
-        // absen & tampilan, termasuk perhitungan jarak/validasi radius kantor (geofencing).
-        // Dipusatkan di satu fungsi supaya perilaku GPS otomatis dan manual selalu konsisten.
         function applyGPSResult(lat, lng, isManual, accuracy) {
             const addrEl = document.getElementById('gpsAddress');
             currentLat = lat;
@@ -956,7 +1287,7 @@ function toggleSidebar(show) {
             }
         }
 
-        // LOGIKA ABSEN MASUK & PULANG (LENGKAP DENGAN ANTI-CHEAT)
+        // LOGIKA ABSEN MASUK & PULANG (LENGKAP DENGAN ANTI-CHEAT & OFFLINE PWA)
         async function submitAbsen(tipe) {
             if(!currentUser) return;
 
@@ -971,9 +1302,15 @@ function toggleSidebar(show) {
                 return showAlert('<b>Wajah tidak terdeteksi!</b> Posisikan wajah Anda tepat di depan kamera.');
             }
             if (faceState.occluded) {
+                if (faceState.occlusionType === 'mask') {
+                    return showAlert(`<b>${t('Mohon lepas masker/penutup wajah Anda')}</b>`);
+                }
                 return showAlert('<b>Wajah terhalang!</b> Pastikan wajah tidak tertutup masker/tangan/topi dan terlihat jelas oleh kamera.');
             }
             if (!faceState.wellLit) {
+                if (faceState.lightStatus === 'dark') {
+                    return showAlert(`<b>Pencahayaan terlalu gelap!</b> ${t('Ruangan terlalu gelap, cari tempat lebih terang')}`);
+                }
                 return showAlert('<b>Pencahayaan kurang mendukung!</b> Sesuaikan pencahayaan ruangan (jangan terlalu gelap/terlalu terang) lalu coba lagi.');
             }
 
@@ -989,20 +1326,31 @@ function toggleSidebar(show) {
             if (btnAbsenEl) { btnAbsenEl.disabled = true; btnAbsenEl.dataset.originalHtml = btnAbsenEl.innerHTML; btnAbsenEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Memvalidasi lokasi...'; }
 
             try {
-                const serverResult = await sbSubmitAbsen({
-                    tipe,
-                    lat: currentLat,
-                    lng: currentLng,
-                    accuracy: currentGPSAccuracy,
-                    companyId: currentUser.company_id,
-                    userId: currentUser.id,
-                    nama: currentUser.nama,
-                    jabatan: currentUser.jabatan,
-                    nearestOffice: currentNearestOffice
-                });
+                let isOffline = !navigator.onLine;
+                let serverResult = null;
 
-                currentGPSDistance = serverResult.jarak !== undefined ? serverResult.jarak : currentGPSDistance;
-                const kantorTervalidasi = serverResult.kantor || (currentNearestOffice ? currentNearestOffice.office.nama : null);
+                if (!isOffline) {
+                    try {
+                        serverResult = await sbSubmitAbsen({
+                            tipe,
+                            lat: currentLat,
+                            lng: currentLng,
+                            accuracy: currentGPSAccuracy,
+                            companyId: currentUser.company_id,
+                            userId: currentUser.id,
+                            nama: currentUser.nama,
+                            jabatan: currentUser.jabatan,
+                            nearestOffice: currentNearestOffice
+                        });
+                    } catch (err) {
+                        const msg = (err.message || '').toLowerCase();
+                        if (msg.includes('fetch') || msg.includes('network') || msg.includes('offline') || msg.includes('failed to fetch') || !navigator.onLine) {
+                            isOffline = true;
+                        } else {
+                            throw err;
+                        }
+                    }
+                }
 
                 const now = new Date();
                 const todayStr = now.toISOString().split('T')[0];
@@ -1010,6 +1358,32 @@ function toggleSidebar(show) {
                 const menitNow = now.getMinutes();
                 const waktuStr = now.toLocaleTimeString(appLocale());
                 const shiftCfg = getShiftConfig(currentUser);
+
+                currentGPSDistance = (serverResult && serverResult.jarak !== undefined) ? serverResult.jarak : currentGPSDistance;
+                const kantorTervalidasi = (serverResult && serverResult.kantor) || (currentNearestOffice ? currentNearestOffice.office.nama : null);
+
+                // Jika OFFLINE: Simpan ke antrean IndexedDB & snapshot foto
+                if (isOffline) {
+                    const offlineRecord = {
+                        id: 'off_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                        tipe,
+                        lat: currentLat,
+                        lng: currentLng,
+                        accuracy: currentGPSAccuracy,
+                        jarakMeter: currentGPSDistance,
+                        kantorNama: kantorTervalidasi,
+                        companyId: currentUser.company_id,
+                        userId: currentUser.id,
+                        nama: currentUser.nama,
+                        jabatan: currentUser.jabatan,
+                        nearestOffice: currentNearestOffice,
+                        timestamp: Date.now(),
+                        isoDate: todayStr,
+                        localTime: waktuStr,
+                        snapshot: captureVideoSnapshot()
+                    };
+                    await saveOfflineAttendance(offlineRecord);
+                }
 
                 // Cari apakah user sudah pernah absen hari ini (di cache lokal)
                 let existingRecord = absensiLogs.find(l => l.userId === currentUser.id && l.tanggal === todayStr);
@@ -1026,7 +1400,7 @@ function toggleSidebar(show) {
                     let status = isLate ? 'Terlambat' : 'Hadir';
 
                     const newLog = {
-                        id: serverResult.log_id || Date.now(),
+                        id: (serverResult && serverResult.log_id) || Date.now(),
                         userId: currentUser.id,
                         nama: currentUser.nama,
                         jabatan: currentUser.jabatan,
@@ -1042,12 +1416,18 @@ function toggleSidebar(show) {
                         gpsAccuracy: currentGPSAccuracy,
                         jarakMeter: currentGPSDistance,
                         kantorNama: kantorTervalidasi,
-                        kantorId: currentNearestOffice ? currentNearestOffice.office.id : null
+                        kantorId: currentNearestOffice ? currentNearestOffice.office.id : null,
+                        isOffline: isOffline
                     };
 
                     absensiLogs.unshift(newLog);
                     saveLogsToStorage();
-                    showAlert(isLate ? `Terlambat! (Batas masuk Shift ${shiftCfg.label}: ${shiftCfg.labelMasuk}). Tercatat Masuk pukul ${waktuStr}` : `Berhasil Absen Masuk pukul ${waktuStr} (Shift ${shiftCfg.label})`, isLate ? 'error' : 'success');
+
+                    if (isOffline) {
+                        showAlert(`<b>${t('Offline: Tersimpan di Memori Perangkat')}</b><br>Koneksi internet terputus. Absen Masuk pukul ${waktuStr} tersimpan dan akan otomatis disinkronkan ke server saat online.`, 'success');
+                    } else {
+                        showAlert(isLate ? `Terlambat! (Batas masuk Shift ${shiftCfg.label}: ${shiftCfg.labelMasuk}). Tercatat Masuk pukul ${waktuStr}` : `Berhasil Absen Masuk pukul ${waktuStr} (Shift ${shiftCfg.label})`, isLate ? 'error' : 'success');
+                    }
 
                 } else if (tipe === 'Pulang') {
                     if (!existingRecord) {
@@ -1070,7 +1450,11 @@ function toggleSidebar(show) {
                     saveLogsToStorage();
 
                     const jamKerja = hitungDurasiKerja(existingRecord.waktuMasuk, waktuStr);
-                    showAlert(`Berhasil Absen Pulang pukul ${waktuStr}. Total Jam Kerja: <b>${jamKerja}</b>`, 'success');
+                    if (isOffline) {
+                        showAlert(`<b>${t('Offline: Tersimpan di Memori Perangkat')}</b><br>Absen Pulang pukul ${waktuStr} tersimpan di antrean offline. Total Jam Kerja: <b>${jamKerja}</b>`, 'success');
+                    } else {
+                        showAlert(`Berhasil Absen Pulang pukul ${waktuStr}. Total Jam Kerja: <b>${jamKerja}</b>`, 'success');
+                    }
                 }
 
                 renderMyStats();
@@ -1280,6 +1664,9 @@ function toggleSidebar(show) {
                     if (log.statusVerifikasi === 'Menunggu Verifikasi') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">${t('SURAT PENDING')}</span>`;
                     else if (log.statusVerifikasi === 'Disetujui') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">${t('SURAT OK')}</span>`;
                     else if (log.statusVerifikasi === 'Ditolak') statusBadge += ` <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">${t('SURAT DITOLAK')}</span>`;
+                }
+                if (log.isOffline) {
+                    statusBadge += ` <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300"><i class="fa-solid fa-cloud-arrow-up mr-0.5"></i>OFFLINE</span>`;
                 }
 
                 const masaKerja = hitungMasaKerja(log.tglMasuk);

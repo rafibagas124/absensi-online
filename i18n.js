@@ -125,18 +125,33 @@
 
         // --- Badge AI kamera ---
         "Cahaya: Terlalu Gelap": "Light: Too Dark",
+        "Cahaya: Terlalu Gelap (< 40)": "Light: Too Dark (< 40)",
         "Cahaya: Terlalu Terang": "Light: Too Bright",
         "Cahaya: Baik": "Light: Good",
+        "Pencahayaan Adaptif (CLAHE)": "Adaptive Lighting (CLAHE)",
         "Wajah: Tidak Terdeteksi": "Face: Not Detected",
         "Wajah: Menunggu Model": "Face: Waiting for Model",
         "Wajah: Terdeteksi": "Face: Detected",
         "Oklusi: Wajah Tertutup/Kurang Jelas": "Occlusion: Face Covered / Unclear",
+        "Oklusi: Terdeteksi Masker": "Occlusion: Mask Detected",
         "Oklusi: Wajah Terlihat Jelas": "Occlusion: Face Clearly Visible",
         "Oklusi: -": "Occlusion: -",
+        "Mohon lepas masker/penutup wajah Anda": "Please remove your mask or face cover",
+        "Ruangan terlalu gelap, cari tempat lebih terang": "Room is too dark, please move to a brighter place",
         "Memuat Model AI...": "Loading AI Model...",
         "Model AI: Aktif": "AI Model: Active",
         "Model AI: Siap": "AI Model: Ready",
         "Model AI Gagal Dimuat": "AI Model Failed to Load",
+
+        // --- PWA & Offline Queue ---
+        "Offline: Tersimpan di Memori": "Offline: Saved to Storage",
+        "Offline: Tersimpan di Memori Perangkat": "Offline: Saved to Device Storage",
+        "Mode Offline (Internet Terputus)": "Offline Mode (Internet Disconnected)",
+        "Online (Terhubung)": "Online (Connected)",
+        "Sinkronkan Data Offline": "Sync Offline Data",
+        "Menyinkronkan presensi offline...": "Syncing offline attendance...",
+        "Semua data presensi offline berhasil disinkronkan ke server.": "All offline attendance records were successfully synced to the server.",
+        "antrean offline": "offline queue",
 
         // --- Status GPS & geofencing ---
         "Mendeteksi lokasi GPS...": "Detecting GPS location...",
