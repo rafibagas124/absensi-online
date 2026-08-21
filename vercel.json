@@ -14,7 +14,11 @@
                 { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
                 { "key": "Permissions-Policy", "value": "geolocation=(self), camera=(self), microphone=()" },
                 { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains; preload" },
-                { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com; font-src 'self' https://cdnjs.cloudflare.com; frame-src 'none'; object-src 'none'; base-uri 'self';" },
+                { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://accounts.google.com https://browser.sentry-cdn.com https://*.sentry.io; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.tailwindcss.com https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com https://*.sentry.io https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://discord.com https://api.telegram.org; worker-src 'self' blob:; frame-src 'self' https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';" },
+                { "key": "Access-Control-Allow-Origin", "value": "*" },
+                { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, PATCH, OPTIONS" },
+                { "key": "Access-Control-Allow-Headers", "value": "X-Requested-With, Content-Type, Accept, Authorization, X-Absensi-CSRF, apikey, prefer" },
+                { "key": "Access-Control-Max-Age", "value": "86400" },
                 { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
             ]
         },

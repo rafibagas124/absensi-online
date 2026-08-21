@@ -1,0 +1,92 @@
+name: Supabase Off-Site Automated Backup
+
+on:
+  schedule:
+    # Berjalan otomatis setiap hari pukul 00:00 UTC (07:00 WIB)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Memungkinkan Admin memicu backup manual dari tab Actions di GitHub
+
+jobs:
+  backup:
+    name: Backup Supabase Database (Isolated Off-Site)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: |
+          npm install @supabase/supabase-js
+
+      - name: Execute Off-Site Backup Snapshot
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node -e "
+          const { createClient } = require('@supabase/supabase-js');
+          const fs = require('fs');
+
+          async function runBackup() {
+            const url = process.env.SUPABASE_URL;
+            const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+            if (!url || !key) {
+              console.log('WARNING: SUPABASE_URL atau SUPABASE_SERVICE_ROLE_KEY belum diset di GitHub Secrets.');
+              console.log('Tambahkan secret tersebut di: Repository Settings -> Secrets and variables -> Actions');
+              process.exit(0);
+            }
+
+            const sb = createClient(url, key);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupDir = './backups';
+            if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+            console.log('Mengambil snapshot tabel dari Supabase...');
+
+            const tables = ['companies', 'profiles', 'office_locations', 'attendance_logs', 'shift_configs', 'security_audit_logs'];
+            const dumpData = {
+              metadata: {
+                timestamp: new Date().toISOString(),
+                source: 'GitHub Actions Automated Off-Site Backup Pipeline',
+                version: '2.0-SaaS'
+              },
+              tables: {}
+            };
+
+            for (const table of tables) {
+              const { data, error } = await sb.from(table).select('*');
+              if (error) {
+                console.warn('Gagal backup tabel ' + table + ':', error.message);
+                dumpData.tables[table] = [];
+              } else {
+                dumpData.tables[table] = data || [];
+                console.log('✓ Backup ' + table + ': ' + (data ? data.length : 0) + ' baris');
+              }
+            }
+
+            const fileName = backupDir + '/supabase_backup_' + timestamp + '.json';
+            fs.writeFileSync(fileName, JSON.stringify(dumpData, null, 2), 'utf8');
+            console.log('Snapshot berhasil dibuat: ' + fileName);
+          }
+
+          runBackup().catch(err => {
+            console.error('Backup pipeline error:', err);
+            process.exit(1);
+          });
+          "
+
+      - name: Upload Backup Artifact (Terisolasi di GitHub)
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-database-backup-${{ github.run_id }}
+          path: ./backups/*.json
+          retention-days: 30

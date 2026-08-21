@@ -23,6 +23,9 @@ const FILES = {
   html: 'index.html',
   manifest: 'manifest.json',
   icons: 'icons',
+  models: 'models',
+  faceApi: 'face-api.min.js',
+  security: 'security.js',
   app: 'app.js',
   supabaseClient: 'supabase_client.js',
   protect: 'protect.js',
@@ -104,6 +107,7 @@ function main() {
   copyFileIfExists(path.join(ROOT_DIR, FILES.html), path.join(DIST_DIR, FILES.html));
   copyFileIfExists(path.join(ROOT_DIR, FILES.manifest), path.join(DIST_DIR, FILES.manifest));
   copyFileIfExists(path.join(ROOT_DIR, FILES.i18n), path.join(DIST_DIR, FILES.i18n));
+  copyFileIfExists(path.join(ROOT_DIR, FILES.faceApi), path.join(DIST_DIR, FILES.faceApi));
 
   const iconsDir = path.join(ROOT_DIR, FILES.icons);
   if (fs.existsSync(iconsDir)) {
@@ -111,10 +115,17 @@ function main() {
     console.log('  ✓ copied: icons/ -> dist/icons/');
   }
 
+  const modelsDir = path.join(ROOT_DIR, FILES.models);
+  if (fs.existsSync(modelsDir)) {
+    fs.cpSync(modelsDir, path.join(DIST_DIR, FILES.models), { recursive: true });
+    console.log('  ✓ copied: models/ -> dist/models/');
+  }
+
   // 3. Obfuscate script JavaScript penting
   console.log('3. Meng-obfuscate JavaScript (Proteksi Tinggi)...');
   obfuscateFile(path.join(ROOT_DIR, FILES.app), path.join(DIST_DIR, FILES.app), BROWSER_OPTIONS);
   obfuscateFile(path.join(ROOT_DIR, FILES.protect), path.join(DIST_DIR, FILES.protect), BROWSER_OPTIONS);
+  obfuscateFile(path.join(ROOT_DIR, FILES.security), path.join(DIST_DIR, FILES.security), BROWSER_OPTIONS);
   obfuscateFile(path.join(ROOT_DIR, FILES.supabaseClient), path.join(DIST_DIR, FILES.supabaseClient), BROWSER_OPTIONS);
 
   // 4. Obfuscate service-worker.js

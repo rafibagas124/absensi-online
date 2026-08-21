@@ -622,3 +622,72 @@ function sbProfileToCurrentUser(profile) {
         must_change_password: !!profile.must_change_password,
     };
 }
+
+// ============================================================
+// SECURITY AUDIT LOGGING & DATA BACKUP HELPERS
+// ============================================================
+
+/**
+ * Log security event to Supabase
+ */
+async function sbLogSecurityEvent({ companyId, eventType, severity = 'INFO', userEmail = null, details = {} }) {
+    if (!sb || !sb.from || !companyId) return null;
+    try {
+        const { data, error } = await sb.from('security_audit_logs').insert([{
+            company_id: companyId,
+            event_type: eventType,
+            severity: severity,
+            user_email: userEmail,
+            user_agent: navigator.userAgent ? navigator.userAgent.substring(0, 150) : '',
+            details: details
+        }]);
+        if (error) console.warn('Audit log write error:', error.message);
+        return data;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Fetch security audit logs for Admin
+ */
+async function sbGetSecurityLogs({ companyId, limit = 50 } = {}) {
+    if (!companyId) return [];
+    try {
+        const { data, error } = await sb
+            .from('security_audit_logs')
+            .select('*')
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error || !data) {
+            // Fallback to local logs
+            return (window.SecurityLogger ? window.SecurityLogger.getLocalLogs() : [])
+                .filter(l => !l.companyId || l.companyId === companyId);
+        }
+        return data.map(d => ({
+            id: d.id,
+            timestamp: d.created_at,
+            eventType: d.event_type,
+            severity: d.severity,
+            userEmail: d.user_email || '-',
+            userAgent: d.user_agent || '',
+            details: d.details || {}
+        }));
+    } catch (e) {
+        return (window.SecurityLogger ? window.SecurityLogger.getLocalLogs() : [])
+            .filter(l => !l.companyId || l.companyId === companyId);
+    }
+}
+
+/**
+ * Export full tenant database snapshot
+ */
+async function sbExportTenantBackup(companyId, companyNama = 'Company') {
+    if (window.BackupEngine && typeof window.BackupEngine.createBackupSnapshot === 'function') {
+        return await window.BackupEngine.createBackupSnapshot(companyId, companyNama);
+    }
+    throw new Error('Backup engine is not loaded.');
+}
+

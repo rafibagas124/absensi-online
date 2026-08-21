@@ -327,3 +327,41 @@ CREATE POLICY "surat_read_authenticated"
     ON storage.objects FOR SELECT
     TO authenticated
     USING (bucket_id = 'surat-dokter');
+
+-- ============================================================
+-- 7. TABEL SECURITY AUDIT LOGS (REAL-TIME AUDIT & MONITORING)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.security_audit_logs (
+    id          BIGSERIAL    PRIMARY KEY,
+    company_id  BIGINT       NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    event_type  VARCHAR(50)  NOT NULL,
+    severity    VARCHAR(20)  NOT NULL DEFAULT 'INFO' CHECK (severity IN ('INFO','WARNING','CRITICAL')),
+    user_email  VARCHAR(150) NULL,
+    user_agent  TEXT         NULL,
+    details     JSONB        NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sec_company ON public.security_audit_logs(company_id);
+CREATE INDEX IF NOT EXISTS idx_sec_created ON public.security_audit_logs(created_at);
+
+ALTER TABLE public.security_audit_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "sec_logs_select"
+    ON public.security_audit_logs FOR SELECT
+    USING (company_id = public.my_company_id() AND public.my_role() = 'admin');
+
+CREATE POLICY "sec_logs_insert"
+    ON public.security_audit_logs FOR INSERT
+    WITH CHECK (true);
+
+-- Enable Realtime Broadcast for Security Logs (Alerts)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.security_audit_logs;
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    -- Ignore if already added or permission denied
+END $$;
+

@@ -20,6 +20,10 @@
 
     <!-- Proteksi frontend dasar (anti klik-kanan / anti devtools) -->
     <script src="./protect.js"></script>
+    <!-- Sentry Error & Security Telemetry SDK (Browser Bundle) -->
+    <script src="https://browser.sentry-cdn.com/7.100.0/bundle.tracing.replay.min.js" crossorigin="anonymous"></script>
+    <!-- Enterprise Security Engine (Rate Limiting, Sanitization, CSRF, Audit Logging, Sentry, Backup) -->
+    <script src="./security.js"></script>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
@@ -483,6 +487,13 @@
                 <button id="btnTabPassReq" onclick="switchMainTab('passreq'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-key w-4"></i> Permintaan Password
                     <span id="badgePwReqPending" class="hidden ml-auto bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span>
+                </button>
+                <button id="btnTabSecurityLog" onclick="switchMainTab('securitylog'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                    <i class="fa-solid fa-shield-halved w-4"></i> Log Keamanan
+                    <span id="badgeSecurityAlerts" class="hidden ml-auto bg-amber-500 text-slate-900 font-bold text-[9px] px-1.5 py-0.5 rounded-full">!</span>
+                </button>
+                <button id="btnTabBackup" onclick="switchMainTab('backup'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                    <i class="fa-solid fa-database w-4"></i> Backup Data
                 </button>
             </nav>
 
@@ -1170,6 +1181,145 @@
                         </thead>
                         <tbody id="kantorListBody"></tbody>
                     </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= LOG KEAMANAN & AUDIT REAL-TIME (ADMIN) ================= -->
+        <section id="securityLogSection" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 no-print">
+                <div>
+                    <h1 class="text-xl font-bold text-slate-800"><i class="fa-solid fa-shield-halved text-blue-600 mr-2"></i>Log Keamanan & Audit Real-Time</h1>
+                    <p class="text-xs text-slate-500">Pemantauan otomatis terhadap aktivitas mencurigakan, percobaan brute force, pelanggaran geofencing, dan kegagalan autentikasi.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="renderSecurityLogs()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs px-3 py-2 rounded-lg font-medium transition flex items-center gap-1">
+                        <i class="fa-solid fa-rotate mr-1"></i> Refresh Log
+                    </button>
+                    <button onclick="clearLocalAuditLogs()" class="bg-red-50 hover:bg-red-100 text-red-700 text-xs px-3 py-2 rounded-lg font-medium border border-red-200 transition">
+                        <i class="fa-solid fa-trash-can mr-1"></i> Bersihkan Log Lokal
+                    </button>
+                </div>
+            </div>
+
+            <!-- SECURITY OVERVIEW CARDS -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-emerald-500">
+                    <p class="text-[11px] text-slate-500 font-semibold uppercase">Status Keamanan Sistem</p>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">
+                            <i class="fa-solid fa-circle-check text-[10px]"></i> Dilindungi
+                        </span>
+                        <span class="text-xs text-slate-400">Rate Limit & CSP Aktif</span>
+                    </div>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-blue-500">
+                    <p class="text-[11px] text-slate-500 font-semibold uppercase">Total Event Terekam</p>
+                    <p id="statTotalSecurityEvents" class="text-2xl font-bold text-slate-700">0</p>
+                </div>
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-amber-500">
+                    <p class="text-[11px] text-slate-500 font-semibold uppercase">Peringatan / Alert</p>
+                    <p id="statTotalSecurityWarnings" class="text-2xl font-bold text-amber-600">0</p>
+                </div>
+            </div>
+
+            <!-- REAL-TIME ALERT & WEBHOOK INTEGRATION CARD (ADMIN) -->
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4 no-print">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="p-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm"><i class="fa-solid fa-bell"></i></span>
+                        <div>
+                            <h3 class="font-bold text-sm text-slate-800">Konfigurasi Notifikasi Alert Real-Time (Discord / Telegram / Slack & Sentry)</h3>
+                            <p class="text-xs text-slate-500">Kirim notifikasi instan ke channel admin jika terjadi anomali (brute-force login, spike kegagalan, dsb).</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Webhook URL (Discord / Slack / Telegram)</label>
+                        <div class="flex gap-2">
+                            <input type="url" id="inputWebhookUrl" class="w-full px-3 py-2 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://discord.com/api/webhooks/...">
+                            <button type="button" onclick="saveWebhookConfig()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition whitespace-nowrap">Simpan</button>
+                            <button type="button" onclick="testWebhookAlert()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium px-3 py-2 rounded-lg transition whitespace-nowrap">Test Alert</button>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1">Mendukung Discord Webhook, Slack Webhook, atau custom HTTP payload endpoint.</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Sentry DSN (Opsional)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="inputSentryDsn" class="w-full px-3 py-2 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://[key]@o[id].ingest.sentry.io/[project]">
+                            <button type="button" onclick="saveSentryConfig()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition whitespace-nowrap">Simpan DSN</button>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1">Pemantauan error & log server cloud realtime menggunakan Sentry.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-4 border-b border-slate-200 flex justify-between items-center no-print">
+                    <h3 class="font-bold text-sm text-slate-700">Daftar Aktivitas & Audit Keamanan</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                <th class="p-3">Waktu</th>
+                                <th class="p-3">Tipe Event</th>
+                                <th class="p-3">Tingkat Bahaya</th>
+                                <th class="p-3">User / Email Terkait</th>
+                                <th class="p-3">Rincian / Payload</th>
+                            </tr>
+                        </thead>
+                        <tbody id="securityLogTableBody" class="divide-y divide-slate-100">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= BACKUP OTOMATIS & PEMULIHAN DATA (ADMIN) ================= -->
+        <section id="backupSection" class="hidden space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 no-print">
+                <div>
+                    <h1 class="text-xl font-bold text-slate-800"><i class="fa-solid fa-database text-blue-600 mr-2"></i>Backup & Pemulihan Data Perusahaan</h1>
+                    <p class="text-xs text-slate-500">Buat snapshot cadangan database berkala yang terisolasi untuk mengantisipasi kerusakan data atau pemulihan darurat.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- KARTU EXPORT / BACKUP SNAPSHOT -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
+                    <div class="flex items-center gap-3">
+                        <span class="p-3 bg-blue-50 text-blue-600 rounded-lg text-lg"><i class="fa-solid fa-cloud-arrow-down"></i></span>
+                        <div>
+                            <h3 class="font-bold text-sm text-slate-800">Download Snapshot Database</h3>
+                            <p class="text-xs text-slate-500">Cadangkan seluruh data staf, log presensi, shift, dan lokasi kantor tenant Anda dalam format terenkripsi JSON.</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-600 space-y-1">
+                        <p><i class="fa-solid fa-shield-check text-emerald-600 mr-1"></i> Data terisolasi khusus perusahaan aktif (Multi-Tenant safe).</p>
+                        <p><i class="fa-solid fa-file-code text-blue-600 mr-1"></i> Format JSON standar, kompatibel untuk restorasi atau arsip cold storage.</p>
+                    </div>
+                    <button type="button" onclick="handleDownloadBackupClick()" id="btnDownloadBackup" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-xs transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-download"></i> Buat & Unduh Snapshot Backup
+                    </button>
+                </div>
+
+                <!-- KARTU PEMULIHAN / VERIFIKASI FILE BACKUP -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-4">
+                    <div class="flex items-center gap-3">
+                        <span class="p-3 bg-emerald-50 text-emerald-600 rounded-lg text-lg"><i class="fa-solid fa-file-circle-check"></i></span>
+                        <div>
+                            <h3 class="font-bold text-sm text-slate-800">Verifikasi & Inspeksi File Backup</h3>
+                            <p class="text-xs text-slate-500">Pilih file snapshot JSON untuk memeriksa integritas data dan jumlah catatan yang tersimpan.</p>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Upload File Snapshot (.json)</label>
+                        <input type="file" id="backupFileInput" accept=".json" onchange="handleInspectBackupFile(event)" class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                    </div>
+                    <div id="backupInspectResult" class="hidden p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1"></div>
                 </div>
             </div>
         </section>

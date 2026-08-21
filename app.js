@@ -227,13 +227,28 @@ function toggleSidebar(show) {
             };
         }
 
-        // ================== LOGIN (SEKARANG KE SUPABASE, BUKAN PHP) ==================
+        // ================== LOGIN (SEKARANG KE SUPABASE DENGAN PROTEKSI TINGGI) ==================
         async function handleLogin(e) {
             e.preventDefault();
-            const kodePerusahaan = document.getElementById('loginCompanyCode').value.trim();
-            const uInput = document.getElementById('loginUser').value.trim();
+            let kodePerusahaan = document.getElementById('loginCompanyCode').value.trim();
+            let uInput = document.getElementById('loginUser').value.trim();
             const pInput = document.getElementById('loginPass').value;
             if (!kodePerusahaan || !uInput || !pInput) return;
+
+            // 1. Sanitasi Input
+            if (window.SecuritySanitizer) {
+                kodePerusahaan = window.SecuritySanitizer.sanitizeText(kodePerusahaan, 30).toUpperCase();
+                uInput = window.SecuritySanitizer.sanitizeText(uInput, 150);
+            }
+
+            // 2. Cek Rate Limiter & Anti Brute-Force
+            if (window.RateLimiter) {
+                const limitCheck = window.RateLimiter.checkLimit('login', uInput, 5, 300, 60);
+                if (!limitCheck.allowed) {
+                    showAlert(`<b>${limitCheck.message}</b>`, 'error');
+                    return;
+                }
+            }
 
             const btnSubmit = e.target.querySelector('button[type="submit"]');
             if (btnSubmit) { btnSubmit.disabled = true; btnSubmit.dataset.originalHtml = btnSubmit.innerHTML; btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Memeriksa akun...'; }
@@ -242,12 +257,32 @@ function toggleSidebar(show) {
                 // uInput bisa berupa email
                 const userData = await sbLogin({ kode_perusahaan: kodePerusahaan, email: uInput, password: pInput });
                 currentUser = mergeLocalProfileFields(userData);
+
+                // Reset counter gagal jika login sukses
+                if (window.RateLimiter) window.RateLimiter.recordSuccess('login', uInput);
+                if (window.SecurityLogger) {
+                    window.SecurityLogger.log({
+                        eventType: 'SUCCESSFUL_LOGIN',
+                        severity: 'INFO',
+                        details: { email: uInput, companyCode: kodePerusahaan }
+                    });
+                }
+
                 // Muat ulang data setelah login berhasil
                 await loadOfficeLocationsFromServer();
                 await loadAbsensiLogsFromSupabase();
                 showAlert(`Selamat datang kembali, <b>${currentUser.nama}</b>!`, 'success');
                 checkSession();
             } catch (err) {
+                // Catat kegagalan login untuk mendeteksi brute force
+                if (window.RateLimiter) window.RateLimiter.recordFailure('login', uInput, 5, 300, 60);
+                if (window.SecurityLogger) {
+                    window.SecurityLogger.log({
+                        eventType: 'FAILED_LOGIN',
+                        severity: 'WARNING',
+                        details: { email: uInput, error: err.message, companyCode: kodePerusahaan }
+                    });
+                }
                 showAlert(`<b>${err.message}</b>`, 'error');
             } finally {
                 if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = btnSubmit.dataset.originalHtml; }
@@ -361,9 +396,13 @@ function toggleSidebar(show) {
             const btnLokasi = document.getElementById('btnTabLokasi');
             const btnKalender = document.getElementById('btnTabKalender');
             const btnPwReq = document.getElementById('btnTabPassReq');
+            const btnSecurityLog = document.getElementById('btnTabSecurityLog');
+            const btnBackup = document.getElementById('btnTabBackup');
             const masterLabel = document.getElementById('masterDataLabel');
             const kalenderSec = document.getElementById('kalenderSection');
             const pwReqSec = document.getElementById('passReqSection');
+            const secLogSec = document.getElementById('securityLogSection');
+            const backupSec = document.getElementById('backupSection');
 
             karySec.classList.add('hidden');
             hrdSec.classList.add('hidden');
@@ -372,6 +411,9 @@ function toggleSidebar(show) {
             lokasiSec.classList.add('hidden');
             if (kalenderSec) kalenderSec.classList.add('hidden');
             if (pwReqSec) pwReqSec.classList.add('hidden');
+            if (secLogSec) secLogSec.classList.add('hidden');
+            if (backupSec) backupSec.classList.add('hidden');
+
             btnPanel.classList.add('hidden');
             btnVerif.classList.add('hidden');
             btnShiftMaster.classList.add('hidden');
@@ -379,6 +421,8 @@ function toggleSidebar(show) {
             btnLokasi.classList.add('hidden');
             if (btnKalender) btnKalender.classList.add('hidden');
             if (btnPwReq) btnPwReq.classList.add('hidden');
+            if (btnSecurityLog) btnSecurityLog.classList.add('hidden');
+            if (btnBackup) btnBackup.classList.add('hidden');
             masterLabel.classList.add('hidden');
 
             if(!currentUser) {
@@ -432,6 +476,8 @@ function toggleSidebar(show) {
                 btnLokasi.classList.remove('hidden');
                 if (btnKalender) btnKalender.classList.remove('hidden');
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
+                if (btnSecurityLog) btnSecurityLog.classList.remove('hidden');
+                if (btnBackup) btnBackup.classList.remove('hidden');
                 masterLabel.classList.remove('hidden');
                 document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-pie w-4";
                 document.getElementById('lblTabPanelText').innerText = t("Dashboard Admin");
@@ -470,9 +516,6 @@ function toggleSidebar(show) {
 
             renderMyStats();
             renderMyPasswordCard();
-            // Pastikan field Kategori Izin & Tanggal Mulai/Selesai langsung tampil
-            // sesuai pilihan default dropdown "Jenis Keterangan" (bug: sebelumnya
-            // baru muncul setelah user mengubah pilihan secara manual).
             toggleUploadSurat();
         }
 
@@ -485,7 +528,9 @@ function toggleSidebar(show) {
             const lokasiSec = document.getElementById('lokasiKantorSection');
             const kalenderSec = document.getElementById('kalenderSection');
             const pwReqSec = document.getElementById('passReqSection');
-            const allBtns = ['btnTabAbsen','btnTabPanel','btnTabVerifikasi','btnTabShiftMaster','btnTabUsers','btnTabLokasi','btnTabKalender','btnTabPassReq'].map(id => document.getElementById(id)).filter(Boolean);
+            const secLogSec = document.getElementById('securityLogSection');
+            const backupSec = document.getElementById('backupSection');
+            const allBtns = ['btnTabAbsen','btnTabPanel','btnTabVerifikasi','btnTabShiftMaster','btnTabUsers','btnTabLokasi','btnTabKalender','btnTabPassReq','btnTabSecurityLog','btnTabBackup'].map(id => document.getElementById(id)).filter(Boolean);
 
             karySec.classList.add('hidden');
             hrdSec.classList.add('hidden');
@@ -495,6 +540,8 @@ function toggleSidebar(show) {
             lokasiSec.classList.add('hidden');
             if (kalenderSec) kalenderSec.classList.add('hidden');
             if (pwReqSec) pwReqSec.classList.add('hidden');
+            if (secLogSec) secLogSec.classList.add('hidden');
+            if (backupSec) backupSec.classList.add('hidden');
             allBtns.forEach(b => b.classList.remove('active'));
 
             if (tab === 'absen') {
@@ -525,6 +572,15 @@ function toggleSidebar(show) {
                 if (pwReqSec) pwReqSec.classList.remove('hidden');
                 document.getElementById('btnTabPassReq').classList.add('active');
                 renderPasswordRequests();
+            } else if (tab === 'securitylog') {
+                if (secLogSec) secLogSec.classList.remove('hidden');
+                const b = document.getElementById('btnTabSecurityLog');
+                if (b) b.classList.add('active');
+                renderSecurityLogs();
+            } else if (tab === 'backup') {
+                if (backupSec) backupSec.classList.remove('hidden');
+                const b = document.getElementById('btnTabBackup');
+                if (b) b.classList.add('active');
             } else {
                 document.getElementById('btnTabPanel').classList.add('active');
                 hrdSec.classList.remove('hidden');
@@ -2314,16 +2370,24 @@ function toggleSidebar(show) {
         async function addUser(e) {
             e.preventDefault();
             if (!currentUser) return;
-            const emailInput = document.getElementById('addUsername').value.trim();
-            const nama       = document.getElementById('addNama').value.trim();
-            const jabatan    = document.getElementById('addJabatan').value.trim();
+            let emailInput = document.getElementById('addUsername').value.trim();
+            let nama       = document.getElementById('addNama').value.trim();
+            let jabatan    = document.getElementById('addJabatan').value.trim();
             const role       = document.getElementById('addRole').value;
             const shift      = document.getElementById('addShift').value;
             const tglMasuk   = document.getElementById('addTglMasuk').value;
             const jatahCuti  = parseInt(document.getElementById('addJatahCuti').value, 10) || 12;
-            const employeeId = document.getElementById('addId').value.trim();
+            let employeeId = document.getElementById('addId').value.trim();
             const passInput  = document.getElementById('addPassword') ? document.getElementById('addPassword').value.trim() : '';
             const finalPassword = passInput || 'AbsensiPro@2024!';
+
+            // Sanitasi Input Form
+            if (window.SecuritySanitizer) {
+                nama = window.SecuritySanitizer.sanitizeText(nama, 100);
+                jabatan = window.SecuritySanitizer.sanitizeText(jabatan, 100);
+                employeeId = window.SecuritySanitizer.sanitizeText(employeeId, 50);
+                emailInput = window.SecuritySanitizer.sanitizeText(emailInput, 150);
+            }
 
             if (passInput && passInput.length < 6) {
                 return showAlert('Password awal minimal 6 karakter.', 'error');
@@ -2846,4 +2910,182 @@ function toggleSidebar(show) {
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = 'Kirim Link Reset'; }
             }
+        }
+
+        // ============================================================
+        // LOG KEAMANAN & AUDIT REAL-TIME (ADMIN VIEW)
+        // ============================================================
+        async function renderSecurityLogs() {
+            const tbody = document.getElementById('securityLogTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-400 italic"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat log keamanan...</td></tr>';
+
+            // Populate input konfigurasi Webhook & Sentry
+            const whInput = document.getElementById('inputWebhookUrl');
+            if (whInput && window.SecurityLogger) whInput.value = window.SecurityLogger.getWebhookUrl();
+            const sentryInput = document.getElementById('inputSentryDsn');
+            if (sentryInput && window.SecurityLogger) sentryInput.value = window.SecurityLogger.getSentryDsn();
+
+            let logs = [];
+            if (typeof sbGetSecurityLogs === 'function' && currentUser) {
+                logs = await sbGetSecurityLogs({ companyId: currentUser.company_id, limit: 100 });
+            } else if (window.SecurityLogger) {
+                logs = window.SecurityLogger.getLocalLogs();
+            }
+
+            const totalEventsEl = document.getElementById('statTotalSecurityEvents');
+            const totalWarningsEl = document.getElementById('statTotalSecurityWarnings');
+            if (totalEventsEl) totalEventsEl.innerText = logs.length;
+            if (totalWarningsEl) totalWarningsEl.innerText = logs.filter(l => l.severity === 'WARNING' || l.severity === 'CRITICAL').length;
+
+            if (!logs || logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-400 italic">Belum ada aktivitas keamanan yang mencurigakan tercatat.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            logs.forEach(log => {
+                let badgeClass = 'bg-slate-100 text-slate-700';
+                if (log.severity === 'WARNING') badgeClass = 'bg-amber-100 text-amber-800 font-bold';
+                if (log.severity === 'CRITICAL') badgeClass = 'bg-red-100 text-red-800 font-bold animate-pulse';
+                if (log.severity === 'INFO') badgeClass = 'bg-blue-50 text-blue-700 font-semibold';
+
+                const timeFormatted = log.timestamp ? new Date(log.timestamp).toLocaleString(appLocale ? appLocale() : 'id-ID') : '-';
+                const detailsStr = typeof log.details === 'object' ? JSON.stringify(log.details) : String(log.details || '-');
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3 font-mono text-[11px] text-slate-600">${timeFormatted}</td>
+                        <td class="p-3 font-semibold text-slate-800">${log.eventType || '-'}</td>
+                        <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] ${badgeClass}">${log.severity || 'INFO'}</span></td>
+                        <td class="p-3 text-slate-600">${log.userEmail || log.userId || '-'}</td>
+                        <td class="p-3 text-[11px] text-slate-500 font-mono max-w-xs truncate" title="${detailsStr}">${detailsStr}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function saveWebhookConfig() {
+            const input = document.getElementById('inputWebhookUrl');
+            if (!input) return;
+            const url = input.value.trim();
+            if (window.SecurityLogger) {
+                window.SecurityLogger.setWebhookUrl(url);
+                showAlert(url ? 'Webhook alert berhasil disimpan!' : 'Webhook alert dinonaktifkan.', 'success');
+            }
+        }
+        window.saveWebhookConfig = saveWebhookConfig;
+
+        async function testWebhookAlert() {
+            if (!window.SecurityLogger) return;
+            const url = window.SecurityLogger.getWebhookUrl();
+            if (!url) {
+                return showAlert('Silakan masukkan Webhook URL terlebih dahulu sebelum melakukan test alert.', 'error');
+            }
+            window.SecurityLogger.log({
+                eventType: 'TEST_SECURITY_ALERT',
+                severity: 'WARNING',
+                details: { message: 'Uji coba notifikasi keamanan real-time dari AbsensiPro Enterprise Security Engine.' }
+            });
+            showAlert('Sinyal uji coba alert telah dikirim ke Webhook!', 'success');
+        }
+        window.testWebhookAlert = testWebhookAlert;
+
+        function saveSentryConfig() {
+            const input = document.getElementById('inputSentryDsn');
+            if (!input) return;
+            const dsn = input.value.trim();
+            if (window.SecurityLogger) {
+                window.SecurityLogger.setSentryDsn(dsn);
+                showAlert(dsn ? 'Sentry DSN berhasil disimpan & diinisialisasi!' : 'Sentry DSN dinonaktifkan.', 'success');
+            }
+        }
+        window.saveSentryConfig = saveSentryConfig;
+
+        function clearLocalAuditLogs() {
+            if (!confirm('Apakah Anda yakin ingin membersihkan riwayat log keamanan lokal?')) return;
+            try {
+                localStorage.removeItem('__absensi_audit_logs');
+                renderSecurityLogs();
+                showAlert('Log keamanan lokal berhasil dibersihkan.', 'success');
+            } catch (e) {
+                showAlert('Gagal membersihkan log: ' + e.message, 'error');
+            }
+        }
+
+        function showSecurityAlertBadge(logEntry) {
+            const badge = document.getElementById('badgeSecurityAlerts');
+            if (badge) {
+                badge.classList.remove('hidden');
+                badge.title = `Peringatan: ${logEntry.eventType} (${logEntry.severity})`;
+            }
+        }
+        window.showSecurityAlertBadge = showSecurityAlertBadge;
+
+        // ============================================================
+        // BACKUP OTOMATIS & PEMULIHAN DATA PERUSAHAAN (ADMIN VIEW)
+        // ============================================================
+        async function handleDownloadBackupClick() {
+            if (!currentUser || currentUser.role !== 'admin') {
+                showAlert('Hanya Admin yang dapat mengunduh backup data.');
+                return;
+            }
+
+            const btn = document.getElementById('btnDownloadBackup');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Menyiapkan Snapshot Data...';
+            }
+
+            try {
+                const backup = await sbExportTenantBackup(currentUser.company_id, currentUser.company_nama || 'Perusahaan');
+                if (window.BackupEngine) {
+                    window.BackupEngine.downloadBackup(backup.fileName, backup.jsonString);
+                }
+                showAlert(`Snapshot database <b>${backup.fileName}</b> berhasil diunduh! Simpan file ini di lokasi aman.`, 'success');
+            } catch (err) {
+                showAlert('Gagal membuat backup: ' + err.message, 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-download mr-2"></i>Buat & Unduh Snapshot Backup';
+                }
+            }
+        }
+
+        function handleInspectBackupFile(e) {
+            const file = e.target.files[0];
+            const resultBox = document.getElementById('backupInspectResult');
+            if (!file || !resultBox) return;
+
+            const reader = new FileReader();
+            reader.onload = function (evt) {
+                try {
+                    const json = JSON.parse(evt.target.result);
+                    if (!json.metadata || !json.tables) {
+                        resultBox.className = 'p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 space-y-1';
+                        resultBox.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> File JSON bukan format snapshot AbsensiPro yang valid.';
+                        resultBox.classList.remove('hidden');
+                        return;
+                    }
+
+                    resultBox.className = 'p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1';
+                    resultBox.innerHTML = `
+                        <p class="font-bold"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> File Backup Terverifikasi Valid</p>
+                        <p>Perusahaan: <b>${json.metadata.companyName || '-'}</b> (ID: ${json.metadata.companyId || '-'})</p>
+                        <p>Tanggal Dibuat: <b>${json.metadata.backupDate ? new Date(json.metadata.backupDate).toLocaleString() : '-'}</b></p>
+                        <p class="text-[11px] text-emerald-700 pt-1">
+                            • Staff: ${(json.tables.profiles || []).length} entri |
+                            • Log Absen: ${(json.tables.attendance_logs || []).length} entri |
+                            • Kantor: ${(json.tables.office_locations || []).length} entri
+                        </p>
+                    `;
+                    resultBox.classList.remove('hidden');
+                } catch (err) {
+                    resultBox.className = 'p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 space-y-1';
+                    resultBox.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Gagal membaca file JSON: format rusak.';
+                    resultBox.classList.remove('hidden');
+                }
+            };
+            reader.readAsText(file);
         }
