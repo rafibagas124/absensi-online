@@ -33,20 +33,18 @@ const FILES = {
   i18n: 'i18n.js',
 };
 
-// Konfigurasi obfuscator "tinggi" untuk kode browser: app.js, protect.js, supabase_client.js
+// Konfigurasi obfuscator "tinggi & stabil" untuk kode browser (tanpa selfDefending/debugProtection yang membekukan thread)
 const BROWSER_OPTIONS = {
   compact: true,
   controlFlowFlattening: true,
-  controlFlowFlatteningThreshold: 0.75,
-  deadCodeInjection: true,
-  deadCodeInjectionThreshold: 0.35,
-  debugProtection: true,
-  debugProtectionInterval: 4000,
-  disableConsoleOutput: true,
+  controlFlowFlatteningThreshold: 0.5,
+  deadCodeInjection: false,
+  debugProtection: false,
+  disableConsoleOutput: false,
   identifierNamesGenerator: 'hexadecimal',
   numbersToExpressions: true,
   renameGlobals: false,
-  selfDefending: true,
+  selfDefending: false,
   simplify: true,
   splitStrings: true,
   splitStringsChunkLength: 10,
