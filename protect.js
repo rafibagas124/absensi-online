@@ -1,37 +1,98 @@
 // ================== PROTEKSI FRONTEND TINGKAT LANJUT (ANTI-DEBUGGING) ==================
-// Catatan: proteksi berikut menghambat pengguna yang mencoba membuka DevTools /
-// memeriksa kode sumber. Ini BUKAN pengganti perlindungan data di sisi server —
-// jangan pernah menyimpan rahasia (API key service_role, secret key) di kode frontend.
+// Catatan: Proteksi ini memblokir shortcut keyboard umum (F12, Ctrl+Shift+I, Ctrl+U, dll)
+// serta klik kanan agar aplikasi tidak mudah diinspeksi secara sembarangan.
 (function () {
     'use strict';
 
-    // ── 1. Cegah klik kanan (context menu) ─────────────────────────────────────
-    document.addEventListener('contextmenu', function (e) {
-        e.preventDefault();
-    });
+    // ── 1. Cegah klik kanan (Context Menu) di seluruh halaman ─────────────────────
+    function blockContextMenu(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        if (e && e.stopImmediatePropagation) e.stopImmediatePropagation();
+        return false;
+    }
+    window.addEventListener('contextmenu', blockContextMenu, { capture: true, passive: false });
+    document.addEventListener('contextmenu', blockContextMenu, { capture: true, passive: false });
 
-    // ── 2. Cegah shortcut umum untuk membuka DevTools / view-source ─────────────
-    document.addEventListener('keydown', function (e) {
+    // ── 2. Cegah Shortcut Keyboard (F12, Ctrl+Shift+I/J/C/K/E, Ctrl+U, Ctrl+S) ───
+    function isDevToolsOrInspectShortcut(e) {
         var key = (e.key || '').toUpperCase();
+        var code = e.code || '';
+        var keyCode = e.keyCode || e.which || 0;
+        var isCtrlOrCmd = e.ctrlKey || e.metaKey;
+        var isShift = e.shiftKey;
+        var isAlt = e.altKey;
 
         // F12
-        if (key === 'F12') { e.preventDefault(); return false; }
-
-        // Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C (DevTools / Console / Inspector)
-        if (e.ctrlKey && e.shiftKey && (key === 'I' || key === 'J' || key === 'C')) {
-            e.preventDefault(); return false;
+        if (key === 'F12' || code === 'F12' || keyCode === 123) {
+            return true;
         }
 
-        // Ctrl+U (view-source)
-        if (e.ctrlKey && key === 'U') { e.preventDefault(); return false; }
+        // Ctrl+Shift+I (DevTools Elements / Inspector) atau Cmd+Option+I di Mac
+        if ((isCtrlOrCmd && isShift && (key === 'I' || code === 'KeyI' || keyCode === 73)) ||
+            (e.metaKey && isAlt && (key === 'I' || code === 'KeyI' || keyCode === 73))) {
+            return true;
+        }
 
-        // Ctrl+S (save-page) — mencegah simpan source HTML offline
-        if (e.ctrlKey && key === 'S') { e.preventDefault(); return false; }
-    });
+        // Ctrl+Shift+J (DevTools Console) atau Cmd+Option+J di Mac
+        if ((isCtrlOrCmd && isShift && (key === 'J' || code === 'KeyJ' || keyCode === 74)) ||
+            (e.metaKey && isAlt && (key === 'J' || code === 'KeyJ' || keyCode === 74))) {
+            return true;
+        }
 
-    // ── 3. Neutralisasi console (mempersulit debug output di DevTools) ────────────
-    // Semua console.* diganti fungsi kosong agar tidak ada output yang bocor.
-    // Ditunda 3 detik supaya inisialisasi library CDN (Supabase, face-api) selesai.
+        // Ctrl+Shift+C (Inspect Element) atau Cmd+Option+C di Mac
+        if ((isCtrlOrCmd && isShift && (key === 'C' || code === 'KeyC' || keyCode === 67)) ||
+            (e.metaKey && isAlt && (key === 'C' || code === 'KeyC' || keyCode === 67))) {
+            return true;
+        }
+
+        // Ctrl+Shift+K (Firefox Web Console) / Ctrl+Shift+E (Firefox Network)
+        if (isCtrlOrCmd && isShift && (key === 'K' || code === 'KeyK' || keyCode === 75 || key === 'E' || code === 'KeyE' || keyCode === 69)) {
+            return true;
+        }
+
+        // Ctrl+U / Cmd+U (View Source)
+        if (isCtrlOrCmd && (key === 'U' || code === 'KeyU' || keyCode === 85)) {
+            return true;
+        }
+
+        // Ctrl+S / Cmd+S (Save Page)
+        if (isCtrlOrCmd && (key === 'S' || code === 'KeyS' || keyCode === 83)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    function blockKeyShortcut(e) {
+        if (isDevToolsOrInspectShortcut(e)) {
+            if (e.preventDefault) e.preventDefault();
+            if (e.stopPropagation) e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            return false;
+        }
+    }
+
+    window.addEventListener('keydown', blockKeyShortcut, { capture: true, passive: false });
+    document.addEventListener('keydown', blockKeyShortcut, { capture: true, passive: false });
+    window.addEventListener('keyup', blockKeyShortcut, { capture: true, passive: false });
+    document.addEventListener('keyup', blockKeyShortcut, { capture: true, passive: false });
+    window.addEventListener('keypress', blockKeyShortcut, { capture: true, passive: false });
+    document.addEventListener('keypress', blockKeyShortcut, { capture: true, passive: false });
+
+    // ── 3. Anti-iframe (Frame-busting / Clickjacking prevention) ─────────────────
+    try {
+        if (window.self !== window.top) {
+            window.top.location = window.self.location;
+        }
+    } catch (_e) {
+        try {
+            document.documentElement.innerHTML = '';
+        } catch (_err) {}
+    }
+
+    // ── 4. Neutralisasi console agar tidak membocorkan data debug ─────────────────
+    // Ditunda beberapa detik agar library awal selesai inisialisasi tanpa error
     function neutralizeConsole() {
         var noop = function () {};
         var methods = ['log', 'debug', 'info', 'warn', 'error', 'table', 'dir', 'trace', 'group', 'groupEnd', 'groupCollapsed', 'count', 'time', 'timeEnd', 'assert', 'profile', 'profileEnd'];
@@ -41,63 +102,6 @@
             });
         }
     }
-    setTimeout(neutralizeConsole, 3500);
-
-    // ── 4. Deteksi DevTools via perubahan ukuran window ──────────────────────────
-    // DevTools yang dibuka (undocked atau docked) menyebabkan selisih ukuran window.
-    // Threshold 160px menghindari false positive saat layar kecil / zoom.
-    var _devToolsOpen = false;
-    function checkDevToolsSize() {
-        var widthDiff  = window.outerWidth  - window.innerWidth;
-        var heightDiff = window.outerHeight - window.innerHeight;
-        var open = widthDiff > 160 || heightDiff > 160;
-        if (open && !_devToolsOpen) {
-            _devToolsOpen = true;
-            try {
-                document.body.style.filter = 'blur(12px)';
-                document.body.style.pointerEvents = 'none';
-                document.body.style.userSelect = 'none';
-            } catch (_e) {}
-        } else if (!open && _devToolsOpen) {
-            _devToolsOpen = false;
-            try {
-                document.body.style.filter = '';
-                document.body.style.pointerEvents = '';
-                document.body.style.userSelect = '';
-            } catch (_e) {}
-        }
-    }
-    setInterval(checkDevToolsSize, 800);
-
-    // ── 5. Anti-iframe (frame-busting / clickjacking prevention) ─────────────────
-    // X-Frame-Options: DENY sudah dipasang di config.php; ini layer client-side tambahan.
-    try {
-        if (window.self !== window.top) {
-            window.top.location = window.self.location;
-        }
-    } catch (_e) {
-        // Jika akses ke window.top diblokir (cross-origin iframe), kosongkan halaman
-        document.documentElement.innerHTML = '';
-    }
-
-    // ── 6. Debugger loop tingkat lanjut ─────────────────────────────────────────
-    // Menggunakan Function constructor agar lebih sulit di-bypass oleh
-    // pengguna yang mencoba meng-overwrite fungsi debugger.
-    var _dbg = function () {
-        // eslint-disable-next-line no-new-func
-        (function () { return false; }).constructor('debugger')();
-    };
-    try {
-        setInterval(function () {
-            try { _dbg(); } catch (_e) {}
-        }, 1200);
-    } catch (_e) {}
-
-    // ── 7. Deteksi Firebug / ekstensi developer lama ────────────────────────────
-    try {
-        if (window.Firebug && window.Firebug.chrome && window.Firebug.chrome.isInitialized) {
-            document.body.innerHTML = '';
-        }
-    } catch (_e) {}
+    setTimeout(neutralizeConsole, 4000);
 
 })();
