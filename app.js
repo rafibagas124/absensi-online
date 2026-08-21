@@ -345,7 +345,7 @@ function toggleSidebar(show) {
             showAlert('Anda telah keluar dari sistem.', 'success');
         }
 
-        function checkSession() {
+        function checkSession(shouldSwitchTab = true) {
             const authWrap = document.getElementById('authWrapper');
             const appWrap = document.getElementById('appWrapper');
             const karySec = document.getElementById('karyawanSection');
@@ -392,9 +392,26 @@ function toggleSidebar(show) {
             document.getElementById('navUserName').innerText = currentUser.nama;
             document.getElementById('navUserRole').innerText = roleLabel(currentUser.role);
 
-            // 'karyawan' adalah role di Supabase; 'staff' adalah alias lama
+            // Tampilkan info tenant / perusahaan aktif (Multi-Tenant SaaS)
+            const tenantBadge = document.getElementById('tenantInfoBadge');
+            if (tenantBadge) {
+                if (currentUser.company_nama || currentUser.company_code) {
+                    tenantBadge.classList.remove('hidden');
+                    const navCompNama = document.getElementById('navCompanyNama');
+                    const navCompCode = document.getElementById('navCompanyCode');
+                    if (navCompNama) navCompNama.innerText = currentUser.company_nama || t('Perusahaan');
+                    if (navCompCode) navCompCode.innerText = currentUser.company_code || '';
+                } else {
+                    tenantBadge.classList.add('hidden');
+                }
+            }
+
+            const monTitle = document.getElementById('monitoringSectionTitle');
+            const monDesc = document.getElementById('monitoringSectionDesc');
+
+            // Role-based view & dashboard configuration
             if(currentUser.role === 'karyawan' || currentUser.role === 'staff' || currentUser.role === 'magang') {
-                switchMainTab('absen');
+                if (shouldSwitchTab) switchMainTab('absen');
             } else if(currentUser.role === 'hrd') {
                 btnPanel.classList.remove('hidden');
                 btnUsers.classList.remove('hidden');
@@ -403,8 +420,10 @@ function toggleSidebar(show) {
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
                 masterLabel.classList.remove('hidden');
                 document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line w-4";
-                document.getElementById('lblTabPanelText').innerText = t("Monitoring & Rekap");
-                switchMainTab('absen');
+                document.getElementById('lblTabPanelText').innerText = t("Dashboard HRD");
+                if (monTitle) monTitle.innerText = t("Dashboard HRD - Monitoring & Rekap");
+                if (monDesc) monDesc.innerText = t("Pantau kehadiran, keterlambatan, jam masuk, jam pulang, dan durasi kerja staff.");
+                if (shouldSwitchTab) switchMainTab('panel');
             } else if(currentUser.role === 'admin') {
                 btnPanel.classList.remove('hidden');
                 btnUsers.classList.remove('hidden');
@@ -414,9 +433,11 @@ function toggleSidebar(show) {
                 if (btnKalender) btnKalender.classList.remove('hidden');
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
                 masterLabel.classList.remove('hidden');
-                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line w-4";
-                document.getElementById('lblTabPanelText').innerText = t("Monitoring & Rekap");
-                switchMainTab('absen');
+                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-pie w-4";
+                document.getElementById('lblTabPanelText').innerText = t("Dashboard Admin");
+                if (monTitle) monTitle.innerText = t("Dashboard Admin - Monitoring & Rekap");
+                if (monDesc) monDesc.innerText = t("Pantau kehadiran, keterlambatan, jam masuk, jam pulang, dan durasi kerja seluruh staff perusahaan.");
+                if (shouldSwitchTab) switchMainTab('panel');
             }
             updateSuratPendingBadge();
             updatePwReqBadge();
@@ -2257,13 +2278,13 @@ function toggleSidebar(show) {
         }
 
         function roleLabel(role) {
-            if (role === 'admin') return 'Admin';
+            if (role === 'admin') return t('Admin Perusahaan');
             if (role === 'hrd') return 'HRD';
             if (role === 'magang') return t('Magang / PKL');
             return t('Staff');
         }
 
-        // ================== STATISTIK HARIAN (MONITORING DAFTAR KARYAWAN) ==================
+        // ================== STATISTIK HARIAN (MONITORING & DASHBOARD) ==================
         function renderTodayStats() {
             const todayStr = new Date().toISOString().split('T')[0];
             const todayLogs = absensiLogs.filter(l => l.tanggal === todayStr);
@@ -2275,11 +2296,19 @@ function toggleSidebar(show) {
             const belumAbsen = Math.max(totalKaryawan - sudahCatat, 0);
 
             const setText = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+            // Panel Admin (Staff Section)
             setText('statTodayTotal', totalKaryawan);
             setText('statTodayHadir', hadirCount);
             setText('statTodayIzin', izinCount);
             setText('statTodaySakit', sakitCount);
             setText('statTodayBelum', belumAbsen);
+
+            // Dashboard Monitoring
+            setText('statHrdTotal', totalKaryawan);
+            setText('statHrdHadir', hadirCount);
+            setText('statHrdIzin', izinCount);
+            setText('statHrdSakit', sakitCount);
+            setText('statHrdBelum', belumAbsen);
         }
 
         async function addUser(e) {
@@ -2792,6 +2821,7 @@ function toggleSidebar(show) {
         // ikut berubah bahasa tanpa perlu reload halaman.
         function onLanguageChanged() {
             if (!currentUser) return;
+            if (typeof checkSession === 'function') checkSession(false);
             if (typeof renderMyStats === 'function') renderMyStats();
             if (typeof renderIzinCalendar === 'function') renderIzinCalendar('kalender', kalenderViewDate, true);
             if (typeof updateCutiInfoForm === 'function') updateCutiInfoForm();
