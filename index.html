@@ -38,6 +38,18 @@
     <!-- Supabase JS SDK (Auth + Database + Storage) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
+        /* Base typography & reset fallback */
+        html, body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+        input, select, textarea, button {
+            font-family: inherit;
+        }
         @media print {
             .no-print { display: none !important; }
             .print-only { display: block !important; }
