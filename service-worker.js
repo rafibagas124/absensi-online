@@ -2,7 +2,7 @@
 // Menyediakan caching app-shell & asset CDN agar aplikasi bisa diinstal & tetap terbuka
 // serta berfungsi penuh saat koneksi internet terputus (PWA Offline Mode).
 
-const CACHE_NAME = 'absensipro-cache-v2';
+const CACHE_NAME = 'absensipro-cache-v3';
 
 // Berkas inti aplikasi (app shell) yang di-precache saat instalasi
 const APP_SHELL = [
@@ -12,6 +12,7 @@ const APP_SHELL = [
   './app.js',
   './i18n.js',
   './protect.js',
+  './face-api.min.js',
   './supabase_client.js',
   './icons/icon-192.png',
   './icons/icon-512.png'

@@ -869,8 +869,9 @@ function toggleSidebar(show) {
         });
 
         // ================== AI FACE RECOGNITION (face-api.js) ==================
-        // Model dimuat dari CDN: TinyFaceDetector (deteksi wajah) + FaceLandmark68Tiny (titik wajah, untuk cek oklusi)
-        const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+        // Model dimuat langsung dari hosting lokal (./models) dengan fallback CDN jika diperlukan
+        const LOCAL_MODEL_URL = './models';
+        const CDN_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
         let faceModelsLoaded = false;
         let faceModelsLoading = false;
         let faceCheckInterval = null;
@@ -882,18 +883,28 @@ function toggleSidebar(show) {
         let faceState = { faceDetected: false, occluded: true, occlusionType: 'none', wellLit: false, lightStatus: 'unknown', score: 0, brightness: 128 };
 
         async function loadFaceModels() {
-            if (faceModelsLoaded || faceModelsLoading) return;
+            if (faceModelsLoaded) return;
+            if (faceModelsLoading) return;
             faceModelsLoading = true;
             try {
                 if (typeof faceapi === 'undefined') {
                     faceModelsLoading = false;
-                    setTimeout(loadFaceModels, 500);
+                    setTimeout(loadFaceModels, 250);
                     return;
                 }
-                await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL);
-                await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODEL_URL);
-                faceModelsLoaded = true;
                 const badge = document.getElementById('badgeModel');
+                if (badge) badge.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Memuat Model AI...';
+
+                try {
+                    await faceapi.nets.tinyFaceDetector.loadFromUri(LOCAL_MODEL_URL);
+                    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(LOCAL_MODEL_URL);
+                } catch(localErr) {
+                    console.warn('Gagal muat model lokal, mencoba CDN fallback...', localErr);
+                    await faceapi.nets.tinyFaceDetector.loadFromUri(CDN_MODEL_URL);
+                    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(CDN_MODEL_URL);
+                }
+
+                faceModelsLoaded = true;
                 if (badge) badge.innerHTML = '<i class="fa-solid fa-microchip mr-1"></i>Model AI: Siap';
             } catch (err) {
                 const badge = document.getElementById('badgeModel');
