@@ -200,6 +200,10 @@
         "Belum Diizinkan": "Not Allowed",
         "Karyawan berhasil dinonaktifkan.": "Employee deactivated successfully.",
         "Nonaktifkan karyawan ini? Mereka tidak akan bisa login lagi.": "Deactivate this employee? They will no longer be able to log in.",
+        "Email Karyawan (untuk Login)": "Employee Email (for Login)",
+        "Gunakan alamat email lengkap agar akun bisa login ke sistem.": "Use a full email address so the account can log in to the system.",
+        "Format Email Tidak Valid!": "Invalid Email Format!",
+        "Format email tidak valid. Masukkan email lengkap seperti": "Invalid email format. Please enter a full email such as",
 
         // --- Admin panel (shift & lokasi) ---
         "Senin - Sabtu": "Monday - Saturday",

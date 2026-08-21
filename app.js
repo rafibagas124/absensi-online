@@ -2073,17 +2073,28 @@ function toggleSidebar(show) {
         async function addUser(e) {
             e.preventDefault();
             if (!currentUser) return;
-            const email    = document.getElementById('addUsername').value.trim();
-            const nama     = document.getElementById('addNama').value.trim();
-            const jabatan  = document.getElementById('addJabatan').value.trim();
-            const role     = document.getElementById('addRole').value;
-            const shift    = document.getElementById('addShift').value;
-            const tglMasuk = document.getElementById('addTglMasuk').value;
-            const jatahCuti = parseInt(document.getElementById('addJatahCuti').value, 10) || 12;
+            const emailInput = document.getElementById('addUsername').value.trim();
+            const nama       = document.getElementById('addNama').value.trim();
+            const jabatan    = document.getElementById('addJabatan').value.trim();
+            const role       = document.getElementById('addRole').value;
+            const shift      = document.getElementById('addShift').value;
+            const tglMasuk   = document.getElementById('addTglMasuk').value;
+            const jatahCuti  = parseInt(document.getElementById('addJatahCuti').value, 10) || 12;
             const employeeId = document.getElementById('addId').value.trim();
-            const defaultPassword = 'AbsensiPro@2024!'; // password sementara, karyawan wajib ganti
+            const passInput  = document.getElementById('addPassword') ? document.getElementById('addPassword').value.trim() : '';
+            const finalPassword = passInput || 'AbsensiPro@2024!';
 
-            if (!email || !nama) { showAlert('Nama dan email wajib diisi.'); return; }
+            if (passInput && passInput.length < 6) {
+                return showAlert('Password awal minimal 6 karakter.', 'error');
+            }
+
+            if (!emailInput || !nama) { showAlert('Nama dan email wajib diisi.', 'error'); return; }
+
+            // Validasi format email
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(emailInput)) {
+                return showAlert('<b>Format Email Tidak Valid!</b><br>Masukkan alamat email lengkap (contoh: <code>karyawan@gmail.com</code> atau <code>nama@perusahaan.com</code>).', 'error');
+            }
 
             const btnSubmit = e.target.querySelector('button[type="submit"]');
             if (btnSubmit) { btnSubmit.disabled = true; btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Menyimpan...'; }
@@ -2094,15 +2105,21 @@ function toggleSidebar(show) {
                     jatah_cuti: jatahCuti,
                     tgl_masuk: tglMasuk || new Date().toISOString().split('T')[0],
                     employee_id: employeeId,
-                    email,
-                    password: defaultPassword,
+                    email: emailInput,
+                    password: finalPassword,
                     companyId: currentUser.company_id
                 });
                 e.target.reset();
                 renderAdminUsers();
-                showAlert(`Karyawan <b>${nama}</b> berhasil ditambahkan! Password sementara: <b>${defaultPassword}</b> — minta karyawan segera ganti setelah login pertama.`, 'success');
+                showAlert(`Karyawan <b>${nama}</b> (Role: <b>${roleLabel(role)}</b>) berhasil ditambahkan!<br>Email Login: <b>${emailInput}</b><br>Password Awal: <b>${finalPassword}</b><br><span class="text-[11px] text-slate-500">Berikan email dan password awal ini kepada karyawan untuk login pertama kali.</span>`, 'success');
             } catch (err) {
-                showAlert('<b>Gagal:</b> ' + err.message, 'error');
+                let msg = err.message || 'Gagal menambahkan karyawan.';
+                if (msg.includes('invalid format') || msg.includes('Unable to validate email address')) {
+                    msg = 'Format email tidak valid. Masukkan email lengkap seperti <b>nama@gmail.com</b>.';
+                } else if (msg.includes('already registered') || msg.includes('already been registered')) {
+                    msg = 'Email ini sudah terdaftar di sistem. Gunakan email lain.';
+                }
+                showAlert('<b>Gagal:</b> ' + msg, 'error');
             } finally {
                 if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = '<i class="fa-solid fa-user-plus mr-1"></i>Tambah Karyawan'; }
             }

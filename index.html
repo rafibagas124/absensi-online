@@ -847,8 +847,19 @@
                             <p class="text-[10px] text-slate-400 mt-1"><i class="fa-solid fa-circle-info mr-1"></i>Total jam kerja tetap 8 jam/hari, jam pulang otomatis menyesuaikan shift.</p>
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-600 mb-1">Username / Email</label>
-                            <input type="text" id="addUsername" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Email Karyawan (untuk Login)</label>
+                            <input type="email" id="addUsername" required class="w-full px-3 py-2 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500" placeholder="contoh: rafibagas@gmail.com">
+                            <p class="text-[10px] text-slate-400 mt-1"><i class="fa-solid fa-circle-info mr-1"></i>Gunakan alamat email lengkap agar akun bisa login ke sistem.</p>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Password Awal Login</label>
+                            <div class="relative">
+                                <input type="password" id="addPassword" class="w-full px-3 py-2 pr-10 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500" placeholder="AbsensiPro@2024! (opsional)">
+                                <button type="button" onclick="togglePasswordVisibility('addPassword', this)" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                    <i class="fa-solid fa-eye text-xs"></i>
+                                </button>
+                            </div>
+                            <p class="text-[10px] text-slate-400 mt-1"><i class="fa-solid fa-circle-info mr-1"></i>Bisa ditentukan sendiri (min 6 karakter) atau dikosongkan (default: <code>AbsensiPro@2024!</code>).</p>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Role Access</label>

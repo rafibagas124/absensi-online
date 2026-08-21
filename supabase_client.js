@@ -450,14 +450,19 @@ async function sbGetCompanyUsers() {
 async function sbAdminAddUser({ nama, jabatan, role, shift, jatah_cuti, tgl_masuk, employee_id, email, password, companyId }) {
     const { data: { session: adminSession } } = await sb.auth.getSession();
 
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+        throw new Error('Format email tidak valid. Masukkan alamat email lengkap (contoh: nama@gmail.com).');
+    }
+
     const { data: authData, error: authErr } = await sb.auth.signUp({
-        email,
+        email: cleanEmail,
         password: password || 'AbsensiPro@2024!',
         options: {
             data: {
                 company_id: companyId,
                 nama, jabatan,
-                role: role || 'karyawan',
+                role: role || 'staff',
                 shift: shift || 'pagi',
                 jatah_cuti: jatah_cuti || 12,
                 tgl_masuk: tgl_masuk || new Date().toISOString().split('T')[0],
@@ -467,7 +472,15 @@ async function sbAdminAddUser({ nama, jabatan, role, shift, jatah_cuti, tgl_masu
         }
     });
 
-    if (authErr) throw new Error('Gagal membuat akun: ' + authErr.message);
+    if (authErr) {
+        if (authErr.message.includes('invalid format') || authErr.message.includes('Unable to validate email address')) {
+            throw new Error('Format email tidak valid. Gunakan format email seperti: nama@gmail.com atau nama@perusahaan.com');
+        }
+        if (authErr.message.includes('already registered') || authErr.message.includes('already been registered')) {
+            throw new Error('Email ini sudah terdaftar. Gunakan email lain.');
+        }
+        throw new Error('Gagal membuat akun: ' + authErr.message);
+    }
 
     // Restore session admin
     if (adminSession) {
