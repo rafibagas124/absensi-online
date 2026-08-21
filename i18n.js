@@ -459,6 +459,7 @@
         "Tidak ada riwayat blokir untuk user ini.": "No block history for this user.",
         "Status keamanan login untuk": "Login security status for",
         "berhasil direset.": "reset successfully.",
+        "Monitoring & Rekap": "Monitoring & Summary",
         "Monitoring & Rekap HRD": "HR Monitoring & Summary",
         "Kelola User & Admin": "Manage Users & Admins",
         "Geolocation tidak didukung browser ini.": "Geolocation is not supported by this browser.",

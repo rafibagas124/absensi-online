@@ -397,23 +397,25 @@ function toggleSidebar(show) {
                 switchMainTab('absen');
             } else if(currentUser.role === 'hrd') {
                 btnPanel.classList.remove('hidden');
+                btnUsers.classList.remove('hidden');
                 btnVerif.classList.remove('hidden');
                 if (btnKalender) btnKalender.classList.remove('hidden');
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
+                masterLabel.classList.remove('hidden');
                 document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line w-4";
-                document.getElementById('lblTabPanelText').innerText = t("Monitoring & Rekap HRD");
+                document.getElementById('lblTabPanelText').innerText = t("Monitoring & Rekap");
                 switchMainTab('absen');
             } else if(currentUser.role === 'admin') {
                 btnPanel.classList.remove('hidden');
+                btnUsers.classList.remove('hidden');
                 btnVerif.classList.remove('hidden');
                 btnShiftMaster.classList.remove('hidden');
-                btnUsers.classList.remove('hidden');
                 btnLokasi.classList.remove('hidden');
                 if (btnKalender) btnKalender.classList.remove('hidden');
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
                 masterLabel.classList.remove('hidden');
-                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-users-gear w-4";
-                document.getElementById('lblTabPanelText').innerText = t("Kelola User & Admin");
+                document.getElementById('lblTabPanelIcon').className = "fa-solid fa-chart-line w-4";
+                document.getElementById('lblTabPanelText').innerText = t("Monitoring & Rekap");
                 switchMainTab('absen');
             }
             updateSuratPendingBadge();
@@ -504,13 +506,8 @@ function toggleSidebar(show) {
                 renderPasswordRequests();
             } else {
                 document.getElementById('btnTabPanel').classList.add('active');
-                if (currentUser.role === 'hrd') {
-                    hrdSec.classList.remove('hidden');
-                    renderTable();
-                } else if (currentUser.role === 'admin') {
-                    admSec.classList.remove('hidden');
-                    renderAdminUsers();
-                }
+                hrdSec.classList.remove('hidden');
+                renderTable();
             }
         }
 

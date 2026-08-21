@@ -451,19 +451,19 @@
                     <i class="fa-solid fa-camera w-4"></i> Presensi Saya
                 </button>
                 <button id="btnTabPanel" onclick="switchMainTab('panel'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
-                    <i id="lblTabPanelIcon" class="fa-solid fa-chart-line w-4"></i> <span id="lblTabPanelText">Panel Kontrol</span>
+                    <i id="lblTabPanelIcon" class="fa-solid fa-chart-line w-4"></i> <span id="lblTabPanelText">Monitoring & Rekap</span>
+                </button>
+
+                <p id="masterDataLabel" class="hidden px-5 pt-5 pb-1 text-[10px] font-bold uppercase text-slate-500 tracking-wider">Master Data</p>
+                <button id="btnTabUsers" onclick="switchMainTab('users'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
+                    <i class="fa-solid fa-users w-4"></i> Staff
                 </button>
                 <button id="btnTabVerifikasi" onclick="switchMainTab('verifikasi'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-file-medical w-4"></i> Verifikasi Surat
                     <span id="badgeSuratPending" class="hidden ml-auto bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">0</span>
                 </button>
-
-                <p id="masterDataLabel" class="hidden px-5 pt-5 pb-1 text-[10px] font-bold uppercase text-slate-500 tracking-wider">Master Data</p>
                 <button id="btnTabShiftMaster" onclick="switchMainTab('shiftmaster'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-business-time w-4"></i> Jam Kerja / Shift
-                </button>
-                <button id="btnTabUsers" onclick="switchMainTab('users'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
-                    <i class="fa-solid fa-users w-4"></i> Staff
                 </button>
                 <button id="btnTabLokasi" onclick="switchMainTab('lokasikantor'); toggleSidebar(false)" class="sidebar-link hidden w-full flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 hover:text-white transition">
                     <i class="fa-solid fa-location-dot w-4"></i> Lokasi Kantor
