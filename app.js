@@ -1077,7 +1077,60 @@ function toggleSidebar(show) {
             }
         }
 
-        // Inspeksi Ketat Oklusi, Masker, Tangan Menutup Wajah, & Kacamata Hitam
+        // Hitung metrik gradien tepi (Sobel) dan kontras pada region canvas
+        function getRegionEdgeMetrics(ctx, x, y, w, h, canvasW, canvasH) {
+            const rx = Math.max(0, Math.min(canvasW - 1, Math.round(x)));
+            const ry = Math.max(0, Math.min(canvasH - 1, Math.round(y)));
+            const rw = Math.max(3, Math.min(canvasW - rx, Math.round(w)));
+            const rh = Math.max(3, Math.min(canvasH - ry, Math.round(h)));
+
+            try {
+                const imgData = ctx.getImageData(rx, ry, rw, rh);
+                const d = imgData.data;
+                let edgeTotal = 0;
+                let count = 0;
+                let maxEdge = 0;
+                let minVal = 255;
+                let maxVal = 0;
+
+                for (let j = 1; j < rh - 1; j++) {
+                    for (let i = 1; i < rw - 1; i++) {
+                        const idx = (j * rw + i) * 4;
+                        const top = ((j - 1) * rw + i) * 4;
+                        const bot = ((j + 1) * rw + i) * 4;
+                        const left = (j * rw + (i - 1)) * 4;
+                        const right = (j * rw + (i + 1)) * 4;
+
+                        const luma = 0.299 * d[idx] + 0.587 * d[idx+1] + 0.114 * d[idx+2];
+                        const lTop = 0.299 * d[top] + 0.587 * d[top+1] + 0.114 * d[top+2];
+                        const lBot = 0.299 * d[bot] + 0.587 * d[bot+1] + 0.114 * d[bot+2];
+                        const lLeft = 0.299 * d[left] + 0.587 * d[left+1] + 0.114 * d[left+2];
+                        const lRight = 0.299 * d[right] + 0.587 * d[right+1] + 0.114 * d[right+2];
+
+                        if (luma < minVal) minVal = luma;
+                        if (luma > maxVal) maxVal = luma;
+
+                        const dx = Math.abs(lRight - lLeft);
+                        const dy = Math.abs(lBot - lTop);
+                        const g = dx + dy;
+                        edgeTotal += g;
+                        if (g > maxEdge) maxEdge = g;
+                        count++;
+                    }
+                }
+                return {
+                    avgEdge: count > 0 ? edgeTotal / count : 0,
+                    maxEdge,
+                    contrast: maxVal - minVal,
+                    minVal,
+                    maxVal
+                };
+            } catch (e) {
+                return { avgEdge: 0, maxEdge: 0, contrast: 0, minVal: 128, maxVal: 128 };
+            }
+        }
+
+        // Inspeksi Ketat Oklusi, Masker, Tangan Menutup Wajah, & Segala Jenis Kacamata
         function inspectFaceOcclusion(detection, video, canvasCtx, canvasW, canvasH) {
             if (!detection || !detection.landmarks) {
                 return { isOccluded: true, type: 'unclear', reason: t('Landmark wajah tidak terdeteksi') };
@@ -1087,8 +1140,8 @@ function toggleSidebar(show) {
             const box = detection.detection.box;
             const score = detection.detection.score;
 
-            // 1. Skor Deteksi Global: Wajah yang tertutup tangan/kain akan kehilangan confidence
-            if (score < 0.60) {
+            // 1. Skor Deteksi Global: Wajah yang tertutup tangan/benda akan kehilangan confidence
+            if (score < 0.65) {
                 return { isOccluded: true, type: 'unclear', reason: t('Wajah tertutup atau kurang jelas') };
             }
 
@@ -1133,9 +1186,10 @@ function toggleSidebar(show) {
             const noseIpdRatio = noseWidth / ipd;
             const noseMouthRatio = noseToMouthDist / ipd;
             const mouthChinRatio = mouthToChinDist / ipd;
+            const mouthCenterOffset = Math.abs(noseTip.x - (mouthLeft.x + mouthRight.x) / 2) / ipd;
 
             // Jika tangan menutupi hidung/mulut, koordinat landmark terdistorsi drastis
-            const isGeometryAbnormal = (mouthIpdRatio < 0.48 || mouthIpdRatio > 1.60 || noseMouthRatio < 0.13 || noseIpdRatio < 0.22 || mouthChinRatio < 0.12);
+            const isGeometryAbnormal = (mouthIpdRatio < 0.52 || mouthIpdRatio > 1.55 || noseMouthRatio < 0.15 || noseIpdRatio < 0.24 || mouthChinRatio < 0.14 || mouthCenterOffset > 0.16);
 
             // 4. Analisis Piksel & Tekstur Canvas Nyata
             if (canvasCtx && canvasW && canvasH) {
@@ -1146,34 +1200,62 @@ function toggleSidebar(show) {
                 const fH = ipd * 0.25;
                 const foreheadStats = getCanvasRegionStats(canvasCtx, fX, fY, fW, fH, canvasW, canvasH);
 
-                // Sampel area kedua mata (Deteksi Kacamata Hitam / Penutup Mata)
+                // Sampel area kedua mata
                 const leStats = getCanvasRegionStats(canvasCtx, leftEye.x - ipd * 0.22, leftEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
                 const reStats = getCanvasRegionStats(canvasCtx, rightEye.x - ipd * 0.22, rightEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
+                const leEdge = getRegionEdgeMetrics(canvasCtx, leftEye.x - ipd * 0.22, leftEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
+                const reEdge = getRegionEdgeMetrics(canvasCtx, rightEye.x - ipd * 0.22, rightEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
 
-                if (foreheadStats.meanLuma > 45) {
-                    const isDarkSunglasses = (leStats.meanLuma < foreheadStats.meanLuma * 0.40 && reStats.meanLuma < foreheadStats.meanLuma * 0.40) ||
-                                           (leStats.meanLuma < 35 && reStats.meanLuma < 35 && foreheadStats.meanLuma > 65);
-                    if (isDarkSunglasses) {
-                        return { isOccluded: true, type: 'glasses', reason: t('Mohon lepas kacamata hitam / penutup mata Anda') };
+                // DETEKSI KACAMATA (Semua Model & Warna: Kacamata Bening, Baca, Frame Tebal/Tipis, Hitam/Sunglasses)
+                // Frame kacamata selalu memiliki bridge di antara kedua sudut mata bagian dalam (pts 39 & 42)
+                const bridgeW = Math.max(4, (pts[42].x - pts[39].x) * 0.75);
+                const bridgeH = Math.max(4, ipd * 0.22);
+                const bridgeX = pts[39].x + (pts[42].x - pts[39].x) * 0.12;
+                const bridgeY = pts[27].y - ipd * 0.10;
+                const bridgeEdge = getRegionEdgeMetrics(canvasCtx, bridgeX, bridgeY, bridgeW, bridgeH, canvasW, canvasH);
+
+                if (foreheadStats.meanLuma > 40) {
+                    // Kacamata Hitam / Sunglasses
+                    const isDarkGlasses = (leStats.meanLuma < foreheadStats.meanLuma * 0.42 && reStats.meanLuma < foreheadStats.meanLuma * 0.42) ||
+                                          (leStats.meanLuma < 38 && reStats.meanLuma < 38 && foreheadStats.meanLuma > 60);
+
+                    // Kacamata Bening / Baca / Frame Apapun:
+                    // Bridge kacamata memiliki garis tepi/refleksi yang jauh lebih kuat dibanding kulit hidung alami
+                    const isFrameBridge = (bridgeEdge.avgEdge >= 11.5 || bridgeEdge.maxEdge > 46 || bridgeEdge.contrast > 46) &&
+                                          (leEdge.maxEdge > 45 || reEdge.maxEdge > 45 || bridgeEdge.contrast > 50);
+
+                    // Refleksi/pantulan cahaya lensa kacamata
+                    const isLensGlare = (leEdge.maxVal > 240 || reEdge.maxVal > 240) && foreheadStats.meanLuma < 210;
+
+                    if (isDarkGlasses || isFrameBridge || isLensGlare) {
+                        return { isOccluded: true, type: 'glasses', reason: t('Mohon lepas kacamata Anda') };
                     }
                 }
 
-                // Sampel area mulut & hidung (Deteksi Tangan / Masker)
+                // DETEKSI TANGAN / MASKER MENUTUP HIDUNG & MULUT
+                // Sampel area lubang hidung (nostrils di bawah pts 33)
+                const nostrilEdge = getRegionEdgeMetrics(canvasCtx, pts[33].x - noseWidth * 0.45, pts[33].y - ipd * 0.06, noseWidth * 0.9, ipd * 0.22, canvasW, canvasH);
+
+                // Sampel area bibir & rongga mulut
                 const mX = (mouthLeft.x + mouthRight.x) / 2 - mouthWidth * 0.45;
                 const mY = (mouthTop.y + mouthBottom.y) / 2 - Math.max(mouthHeight, ipd * 0.15);
                 const mW = mouthWidth * 0.9;
                 const mH = Math.max(mouthHeight * 2, ipd * 0.3);
                 const mouthStats = getCanvasRegionStats(canvasCtx, mX, mY, mW, mH, canvasW, canvasH);
+                const mouthEdge = getRegionEdgeMetrics(canvasCtx, mX, mY, mW, mH, canvasW, canvasH);
 
-                // Pada wajah terbuka asli, area bibir/mulut memiliki variasi kontras/tekstur tinggi.
-                // Ketika tertutup masker polos atau tangan, tekstur bibir menjadi seragam/hilang.
-                const isTextureFlat = (mouthStats.stdDev < 8.2) || (mouthStats.stdDev < 11.0 && score < 0.78);
+                // Pengecekan kontras bayangan lubang hidung & garis bibir:
+                // Wajah terbuka: nostril memiliki bayangan gelap (minVal < 55) dan bibir memiliki garis celah mulut tajam (mouthEdge.maxEdge >= 35).
+                // Tertutup tangan/masker: nostril tertutup kulit tangan/kain (minVal tinggi) atau bibir tidak memiliki celah mulut normal.
+                const isNostrilCovered = (nostrilEdge.minVal > 70 && nostrilEdge.contrast < 34);
+                const isMouthCovered = (mouthEdge.maxEdge < 28) || (mouthStats.stdDev < 8.2);
+                const isHandOnFace = isNostrilCovered || (isMouthCovered && score < 0.85);
 
-                if (isGeometryAbnormal || isTextureFlat) {
+                if (isGeometryAbnormal || isHandOnFace) {
                     return { isOccluded: true, type: 'mask', reason: t('Mohon lepas masker / jauhkan tangan dari wajah') };
                 }
             } else {
-                if (isGeometryAbnormal || (score < 0.68 && mouthIpdRatio < 0.60)) {
+                if (isGeometryAbnormal || (score < 0.70 && mouthIpdRatio < 0.60)) {
                     return { isOccluded: true, type: 'mask', reason: t('Mohon lepas masker / jauhkan tangan dari wajah') };
                 }
             }
@@ -1254,8 +1336,8 @@ function toggleSidebar(show) {
                         setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Tertutup / Masker')}`, 'bg-red-600/85 text-white');
                         showAiWarning(occCheck.reason || t('Mohon lepas masker / jauhkan tangan dari wajah'), 'mask');
                     } else if (occCheck.type === 'glasses') {
-                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-glasses mr-1"></i>${t('Oklusi: Kacamata Hitam')}`, 'bg-red-600/85 text-white');
-                        showAiWarning(occCheck.reason || t('Mohon lepas kacamata hitam / penutup mata Anda'), 'glasses');
+                        setAiBadge('badgeOcclusion', `<i class="fa-solid fa-glasses mr-1"></i>${t('Oklusi: Terdeteksi Kacamata')}`, 'bg-red-600/85 text-white');
+                        showAiWarning(occCheck.reason || t('Mohon lepas kacamata Anda'), 'glasses');
                     } else {
                         setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Kurang Jelas')}`, 'bg-red-600/85 text-white');
                         showAiWarning(occCheck.reason || t('Wajah tertutup atau kurang jelas'), 'occluded');
@@ -1422,7 +1504,7 @@ function toggleSidebar(show) {
                     return showAlert(`<b>${t('Wajah Terhalang!')}</b> ${t('Mohon lepas masker / jauhkan tangan dari wajah')}`);
                 }
                 if (faceState.occlusionType === 'glasses') {
-                    return showAlert(`<b>${t('Area Mata Terhalang!')}</b> ${t('Mohon lepas kacamata hitam / penutup mata Anda')}`);
+                    return showAlert(`<b>${t('Area Mata Terhalang!')}</b> ${t('Mohon lepas kacamata Anda')}`);
                 }
                 if (faceState.occlusionType === 'eyes_closed') {
                     return showAlert(`<b>${t('Mata Tidak Terlihat!')}</b> ${t('Buka mata Anda dan pastikan area mata terlihat jelas oleh kamera.')}`);
