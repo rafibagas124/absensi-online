@@ -108,6 +108,10 @@ function main() {
   copyFileIfExists(path.join(ROOT_DIR, FILES.i18n), path.join(DIST_DIR, FILES.i18n));
   copyFileIfExists(path.join(ROOT_DIR, FILES.faceApi), path.join(DIST_DIR, FILES.faceApi));
   copyFileIfExists(path.join(ROOT_DIR, FILES.style), path.join(DIST_DIR, FILES.style));
+  copyFileIfExists(
+    path.join(ROOT_DIR, 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd', 'supabase.js'),
+    path.join(DIST_DIR, 'supabase.js')
+  );
 
   const iconsDir = path.join(ROOT_DIR, FILES.icons);
   if (fs.existsSync(iconsDir)) {

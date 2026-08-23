@@ -31,8 +31,8 @@
     <!-- i18next multi-bahasa -->
     <script src="https://cdn.jsdelivr.net/npm/i18next@23/dist/umd/i18next.min.js"></script>
     <script src="./i18n.js"></script>
-    <!-- Supabase JS SDK (Auth + Database + Storage) -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="document.write('<script src=\"https://unpkg.com/@supabase/supabase-js@2\"><\\/script>')"></script>
+    <!-- Supabase JS SDK lokal agar login tetap berjalan tanpa akses CDN -->
+    <script src="./supabase.js"></script>
     <style>
         /* Base typography & reset fallback */
         html, body {

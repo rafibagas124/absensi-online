@@ -10,6 +10,7 @@ const APP_SHELL = [
   './index.html',
   './style.css',
   './manifest.json',
+  './supabase.js',
   './app.js',
   './i18n.js',
   './protect.js',
