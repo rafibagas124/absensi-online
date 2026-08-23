@@ -95,9 +95,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // CSS harus selalu mengambil versi terbaru terlebih dahulu agar tampilan
-  // tidak rusak karena stylesheet lama yang tersimpan di PWA cache.
-  if (url.origin === self.location.origin && url.pathname.endsWith('.css')) {
+  // Aset aplikasi harus mengambil versi terbaru terlebih dahulu agar PWA
+  // tidak menjalankan JavaScript/CSS lama dari cache.
+  if (url.origin === self.location.origin && /\.(?:css|js)$/.test(url.pathname)) {
     event.respondWith(
       fetch(req, { cache: 'no-store' })
         .then((networkResponse) => {
