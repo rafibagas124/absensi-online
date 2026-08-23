@@ -208,11 +208,40 @@ async function sbGetCurrentUser() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return null;
 
-    const { data: profile } = await sb
+    const { data: profile, error: profileError } = await sb
         .from('profiles')
         .select('company_id, role, nama, jabatan, shift, jatah_cuti, allow_change_password, tgl_masuk, must_change_password, employee_id, is_active')
         .eq('id', session.user.id)
         .single();
+
+    // Saat offline, getSession() masih dapat membaca session tersimpan oleh SDK.
+    // Gunakan metadata minimal agar user tetap bisa mengantrekan absensi; RLS dan
+    // trigger database tetap menjadi otoritas saat antrean disinkronkan.
+    if (profileError && !navigator.onLine) {
+        const metadata = session.user.user_metadata || {};
+        const companyId = Number(metadata.company_id);
+        if (!companyId) return null;
+        return {
+            id: session.user.id,
+            email: session.user.email,
+            nama: metadata.nama || session.user.email,
+            jabatan: metadata.jabatan || '',
+            role: metadata.role || 'karyawan',
+            shift: metadata.shift || 'pagi',
+            jatah_cuti: metadata.jatah_cuti ?? 12,
+            jatahCuti: metadata.jatah_cuti ?? 12,
+            allow_change_password: !!metadata.allow_change_password,
+            allowChangePassword: !!metadata.allow_change_password,
+            tgl_masuk: metadata.tgl_masuk || null,
+            tglMasuk: metadata.tgl_masuk || null,
+            must_change_password: !!metadata.must_change_password,
+            mustChangePassword: !!metadata.must_change_password,
+            employee_id: metadata.employee_id || null,
+            company_id: companyId,
+            company_nama: metadata.company_nama || '',
+            company_code: metadata.company_code || ''
+        };
+    }
 
     if (!profile || !profile.is_active) return null;
 
