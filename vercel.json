@@ -6,6 +6,19 @@
     ],
     "headers": [
         {
+            "source": "/index.html",
+            "headers": [
+                { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+            ]
+        },
+        {
+            "source": "/service-worker.js",
+            "headers": [
+                { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+                { "key": "Service-Worker-Allowed", "value": "/" }
+            ]
+        },
+        {
             "source": "/(.*)",
             "headers": [
                 { "key": "X-Content-Type-Options", "value": "nosniff" },
@@ -20,13 +33,6 @@
                 { "key": "Access-Control-Allow-Headers", "value": "X-Requested-With, Content-Type, Accept, Authorization, X-Absensi-CSRF, apikey, prefer" },
                 { "key": "Access-Control-Max-Age", "value": "86400" },
                 { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
-            ]
-        },
-        {
-            "source": "/service-worker.js",
-            "headers": [
-                { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-                { "key": "Service-Worker-Allowed", "value": "/" }
             ]
         },
         {

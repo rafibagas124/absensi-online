@@ -31,6 +31,7 @@ const FILES = {
   protect: 'protect.js',
   serviceWorker: 'service-worker.js',
   i18n: 'i18n.js',
+  style: 'style.css',
 };
 
 // Konfigurasi obfuscator "tinggi & stabil" untuk kode browser (tanpa selfDefending/debugProtection yang membekukan thread)
@@ -106,6 +107,7 @@ function main() {
   copyFileIfExists(path.join(ROOT_DIR, FILES.manifest), path.join(DIST_DIR, FILES.manifest));
   copyFileIfExists(path.join(ROOT_DIR, FILES.i18n), path.join(DIST_DIR, FILES.i18n));
   copyFileIfExists(path.join(ROOT_DIR, FILES.faceApi), path.join(DIST_DIR, FILES.faceApi));
+  copyFileIfExists(path.join(ROOT_DIR, FILES.style), path.join(DIST_DIR, FILES.style));
 
   const iconsDir = path.join(ROOT_DIR, FILES.icons);
   if (fs.existsSync(iconsDir)) {

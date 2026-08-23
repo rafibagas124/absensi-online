@@ -2,12 +2,13 @@
 // Menyediakan caching app-shell & asset CDN agar aplikasi bisa diinstal & tetap terbuka
 // serta berfungsi penuh saat koneksi internet terputus (PWA Offline Mode).
 
-const CACHE_NAME = 'absensipro-cache-v5';
+const CACHE_NAME = 'absensipro-cache-v6';
 
 // Berkas inti aplikasi (app shell) yang di-precache saat instalasi
 const APP_SHELL = [
   './',
   './index.html',
+  './style.css',
   './manifest.json',
   './app.js',
   './i18n.js',
@@ -90,6 +91,23 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           return caches.match(req).then((cached) => cached || caches.match('./index.html') || caches.match('/index.html'));
         })
+    );
+    return;
+  }
+
+  // CSS harus selalu mengambil versi terbaru terlebih dahulu agar tampilan
+  // tidak rusak karena stylesheet lama yang tersimpan di PWA cache.
+  if (url.origin === self.location.origin && url.pathname.endsWith('.css')) {
+    event.respondWith(
+      fetch(req, { cache: 'no-store' })
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(req))
     );
     return;
   }
