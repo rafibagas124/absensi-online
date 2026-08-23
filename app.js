@@ -27,18 +27,34 @@ function toggleSidebar(show) {
             if (typeof u.jatahCuti === 'undefined') u.jatahCuti = 12;
         });
 
-        // ================== KONFIGURASI SHIFT KERJA (BISA DIUBAH ADMIN/HRD, DISIMPAN DI localStorage) ==================
+        // ================== KONFIGURASI SHIFT KERJA (SUMBER UTAMA: SUPABASE) ==================
         const DEFAULT_SHIFT_CONFIG = {
             pagi:  { label: "Pagi",  jamMasuk: 8,  menitMasuk: 0, jamPulang: 16, menitPulang: 0, toleransi: 15, labelMasuk: "08:00 WIB", labelPulang: "16:00 WIB" },
             siang: { label: "Siang", jamMasuk: 13, menitMasuk: 0, jamPulang: 21, menitPulang: 0, toleransi: 15, labelMasuk: "13:00 WIB", labelPulang: "21:00 WIB" }
         };
-        let SHIFT_CONFIG = JSON.parse(localStorage.getItem('absensi_shift_config')) || JSON.parse(JSON.stringify(DEFAULT_SHIFT_CONFIG));
+        let SHIFT_CONFIG = JSON.parse(JSON.stringify(DEFAULT_SHIFT_CONFIG));
         // Migrasi: pastikan field lengkap (jaga-jaga config lama tersimpan sebagian)
         Object.keys(DEFAULT_SHIFT_CONFIG).forEach(key => {
             if (!SHIFT_CONFIG[key]) SHIFT_CONFIG[key] = JSON.parse(JSON.stringify(DEFAULT_SHIFT_CONFIG[key]));
             if (typeof SHIFT_CONFIG[key].toleransi === 'undefined') SHIFT_CONFIG[key].toleransi = 15;
         });
-        function saveShiftConfigToStorage() { localStorage.setItem('absensi_shift_config', JSON.stringify(SHIFT_CONFIG)); }
+        function applyServerShiftConfigs(configs) {
+            if (!Array.isArray(configs) || configs.length === 0) return;
+            SHIFT_CONFIG = Object.fromEntries(configs.map(config => [config.shift_key, {
+                label: config.label,
+                jamMasuk: Number(config.jam_masuk), menitMasuk: Number(config.menit_masuk),
+                jamPulang: Number(config.jam_pulang), menitPulang: Number(config.menit_pulang),
+                toleransi: Number(config.toleransi),
+                labelMasuk: `${pad2(config.jam_masuk)}:${pad2(config.menit_masuk)} WIB`,
+                labelPulang: `${pad2(config.jam_pulang)}:${pad2(config.menit_pulang)} WIB`
+            }]));
+        }
+
+        async function loadShiftConfigsFromServer() {
+            if (!currentUser || typeof sbGetShiftConfigs !== 'function') return;
+            try { applyServerShiftConfigs(await sbGetShiftConfigs(currentUser.company_id)); }
+            catch (err) { console.error('Gagal memuat konfigurasi shift:', err); }
+        }
         function pad2(n) { return String(n).padStart(2, '0'); }
         function getShiftConfig(user) {
             return SHIFT_CONFIG[(user && user.shift) || 'pagi'];
@@ -48,7 +64,7 @@ function toggleSidebar(show) {
         let passwordRequests = JSON.parse(localStorage.getItem('absensi_pwreq')) || [];
         function savePwReqToStorage() { localStorage.setItem('absensi_pwreq', JSON.stringify(passwordRequests)); }
 
-        let absensiLogs = JSON.parse(localStorage.getItem('absensi_logs')) || [];
+        let absensiLogs = [];
         // Sekarang TIDAK dibaca dari sessionStorage lagi -> diisi dari server lewat
         // restoreSessionFromServer() saat halaman dimuat (lihat DOMContentLoaded di bawah).
         let currentUser = null;
@@ -184,7 +200,7 @@ function toggleSidebar(show) {
         });
 
         function saveUsersToStorage() { localStorage.setItem('absensi_users', JSON.stringify(users)); }
-        function saveLogsToStorage() { localStorage.setItem('absensi_logs', JSON.stringify(absensiLogs)); }
+        function saveLogsToStorage() { /* Log absensi disimpan di Supabase; offline memakai antrean khusus. */ }
 
         // Toggle lihat/sembunyikan password (icon mata)
         function togglePasswordVisibility(inputId, btn) {
@@ -257,6 +273,7 @@ function toggleSidebar(show) {
                 // uInput bisa berupa email
                 const userData = await sbLogin({ kode_perusahaan: kodePerusahaan, email: uInput, password: pInput });
                 currentUser = mergeLocalProfileFields(userData);
+                await loadShiftConfigsFromServer();
 
                 // Reset counter gagal jika login sukses
                 if (window.RateLimiter) window.RateLimiter.recordSuccess('login', uInput);
@@ -295,6 +312,7 @@ function toggleSidebar(show) {
                 const userData = await sbGetCurrentUser();
                 if (userData) {
                     currentUser = mergeLocalProfileFields(userData);
+                    await loadShiftConfigsFromServer();
                     await loadAbsensiLogsFromSupabase();
                 } else {
                     currentUser = null;
@@ -314,8 +332,9 @@ function toggleSidebar(show) {
                 saveLogsToStorage();
             } catch (err) {
                 console.error('Gagal load logs dari Supabase:', err);
-                // Fallback ke cache localStorage
-                absensiLogs = JSON.parse(localStorage.getItem('absensi_logs')) || [];
+                // Jangan tampilkan data lama sebagai data terkini saat server gagal.
+                absensiLogs = [];
+                showAlert('Data absensi belum dapat dimuat dari server. Periksa koneksi lalu coba lagi.', 'error');
             }
         }
 
@@ -2677,8 +2696,9 @@ function toggleSidebar(show) {
             document.getElementById('shiftTimeEditModal').classList.add('hidden');
             activeShiftEditKey = null;
         }
-        function saveShiftTimeChange() {
-            const cfg = SHIFT_CONFIG[activeShiftEditKey];
+        async function saveShiftTimeChange() {
+            const shiftKey = activeShiftEditKey;
+            const cfg = SHIFT_CONFIG[shiftKey];
             if (!cfg) return;
             const masukVal = document.getElementById('shiftTimeMasuk').value;
             const pulangVal = document.getElementById('shiftTimePulang').value;
@@ -2691,12 +2711,26 @@ function toggleSidebar(show) {
             cfg.toleransi = toleransi;
             cfg.labelMasuk = `${pad2(jm)}:${pad2(mm)} WIB`;
             cfg.labelPulang = `${pad2(jp)}:${pad2(mp)} WIB`;
-            saveShiftConfigToStorage();
+            try {
+                await sbUpsertShiftConfig({
+                    companyId: currentUser.company_id,
+                    shiftKey,
+                    label: cfg.label,
+                    jamMasuk: jm,
+                    menitMasuk: mm,
+                    jamPulang: jp,
+                    menitPulang: mp,
+                    toleransi
+                });
+            } catch (err) {
+                showAlert(err.message || 'Gagal menyimpan konfigurasi shift.', 'error');
+                return;
+            }
             closeShiftTimeModal();
             renderShiftMasterTable();
             showAlert(`Jam kerja Shift <b>${cfg.label}</b> berhasil diubah menjadi <b>${cfg.labelMasuk} - ${cfg.labelPulang}</b>.`, 'success');
             // Sinkronkan tampilan jika user yang sedang login memakai shift ini
-            if (currentUser && (currentUser.shift || 'pagi') === activeShiftEditKey) {
+            if (currentUser && (currentUser.shift || 'pagi') === shiftKey) {
                 setupKaryawanView();
             }
         }
