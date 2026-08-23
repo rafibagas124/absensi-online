@@ -1511,8 +1511,14 @@
     <!-- ======== PWA: registrasi Service Worker (agar bisa di-install & tetap terbuka saat offline) ======== -->
     <script>
         if ('serviceWorker' in navigator) {
+            let refreshingAfterServiceWorkerUpdate = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (refreshingAfterServiceWorkerUpdate) return;
+                refreshingAfterServiceWorkerUpdate = true;
+                window.location.reload();
+            });
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js?v=6', { updateViaCache: 'none' })
+                navigator.serviceWorker.register('./service-worker.js?v=7', { updateViaCache: 'none' })
                     .then((registration) => registration.update())
                     .catch((err) => console.warn('Service Worker gagal didaftarkan:', err));
             });
