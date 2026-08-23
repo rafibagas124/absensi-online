@@ -46,8 +46,11 @@ const SUPABASE_URL  = window[atob('X19TQl9VUkw=')] || '';
 const SUPABASE_ANON = window[atob('X19TQl9LRVk=')] || '';
 
 // Inisialisasi client Supabase secara aman
-const { createClient } = typeof supabase !== 'undefined' ? supabase : { createClient: () => null };
-const sb = (SUPABASE_URL && SUPABASE_ANON && SUPABASE_ANON.length >= 20 && typeof createClient === 'function')
+const supabaseSdk = typeof supabase !== 'undefined' ? supabase : null;
+const createClient = supabaseSdk && typeof supabaseSdk.createClient === 'function'
+    ? supabaseSdk.createClient
+    : null;
+const sb = (SUPABASE_URL && SUPABASE_ANON && SUPABASE_ANON.length >= 20 && createClient)
     ? createClient(SUPABASE_URL, SUPABASE_ANON, {
         auth: {
             persistSession: true,
