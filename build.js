@@ -88,6 +88,7 @@ function obfuscateFile(srcFile, destFile, options) {
 
 function copyFileIfExists(srcFile, destFile) {
   if (fs.existsSync(srcFile)) {
+    fs.mkdirSync(path.dirname(destFile), { recursive: true });
     fs.copyFileSync(srcFile, destFile);
     console.log(`  ✓ copied: ${path.basename(srcFile)} -> dist/${path.basename(destFile)}`);
   }
@@ -112,6 +113,15 @@ function main() {
     path.join(ROOT_DIR, 'node_modules', '@supabase', 'supabase-js', 'dist', 'umd', 'supabase.js'),
     path.join(DIST_DIR, 'supabase.js')
   );
+  copyFileIfExists(
+    path.join(ROOT_DIR, 'node_modules', '@fortawesome', 'fontawesome-free', 'css', 'all.min.css'),
+    path.join(DIST_DIR, 'fontawesome', 'all.min.css')
+  );
+  const fontAwesomeFontsDir = path.join(ROOT_DIR, 'node_modules', '@fortawesome', 'fontawesome-free', 'webfonts');
+  if (fs.existsSync(fontAwesomeFontsDir)) {
+    fs.cpSync(fontAwesomeFontsDir, path.join(DIST_DIR, 'webfonts'), { recursive: true });
+    console.log('  ✓ copied: Font Awesome webfonts -> dist/webfonts/');
+  }
 
   const iconsDir = path.join(ROOT_DIR, FILES.icons);
   if (fs.existsSync(iconsDir)) {
