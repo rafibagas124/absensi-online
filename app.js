@@ -1349,28 +1349,14 @@ function toggleSidebar(show) {
                 const leEdge = getRegionEdgeMetrics(canvasCtx, leftEye.x - ipd * 0.22, leftEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
                 const reEdge = getRegionEdgeMetrics(canvasCtx, rightEye.x - ipd * 0.22, rightEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
 
-                // DETEKSI KACAMATA (Semua Model & Warna: Kacamata Bening, Baca, Frame Tebal/Tipis, Hitam/Sunglasses)
-                // Frame kacamata selalu memiliki bridge di antara kedua sudut mata bagian dalam (pts 39 & 42)
-                const bridgeW = Math.max(4, (pts[42].x - pts[39].x) * 0.75);
-                const bridgeH = Math.max(4, ipd * 0.22);
-                const bridgeX = pts[39].x + (pts[42].x - pts[39].x) * 0.12;
-                const bridgeY = pts[27].y - ipd * 0.10;
-                const bridgeEdge = getRegionEdgeMetrics(canvasCtx, bridgeX, bridgeY, bridgeW, bridgeH, canvasW, canvasH);
-
                 if (foreheadStats.meanLuma > 40) {
-                    // Kacamata Hitam / Sunglasses
-                    const isDarkGlasses = (leStats.meanLuma < foreheadStats.meanLuma * 0.42 && reStats.meanLuma < foreheadStats.meanLuma * 0.42) ||
-                                          (leStats.meanLuma < 38 && reStats.meanLuma < 38 && foreheadStats.meanLuma > 60);
+                    // Hanya tandai kacamata hitam yang sangat gelap pada kedua mata.
+                    // Garis wajah, alis, dan pantulan cahaya normal tidak cukup untuk memblokir absen.
+                    const isDarkGlasses = (leStats.meanLuma < 25 && reStats.meanLuma < 25 && foreheadStats.meanLuma > 90) ||
+                                          (leStats.meanLuma < foreheadStats.meanLuma * 0.22 && reStats.meanLuma < foreheadStats.meanLuma * 0.22 &&
+                                           leStats.maxVal < 90 && reStats.maxVal < 90);
 
-                    // Kacamata Bening / Baca / Frame Apapun:
-                    // Bridge kacamata memiliki garis tepi/refleksi yang jauh lebih kuat dibanding kulit hidung alami
-                    const isFrameBridge = (bridgeEdge.avgEdge >= 11.5 || bridgeEdge.maxEdge > 46 || bridgeEdge.contrast > 46) &&
-                                          (leEdge.maxEdge > 45 || reEdge.maxEdge > 45 || bridgeEdge.contrast > 50);
-
-                    // Refleksi/pantulan cahaya lensa kacamata
-                    const isLensGlare = (leEdge.maxVal > 240 || reEdge.maxVal > 240) && foreheadStats.meanLuma < 210;
-
-                    if (isDarkGlasses || isFrameBridge || isLensGlare) {
+                    if (isDarkGlasses) {
                         return { isOccluded: true, type: 'glasses', reason: t('Mohon lepas kacamata Anda') };
                     }
                 }
