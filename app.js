@@ -1286,7 +1286,7 @@ function toggleSidebar(show) {
             const score = detection.detection.score;
 
             // 1. Skor Deteksi Global: Wajah yang tertutup tangan/benda akan kehilangan confidence
-            if (score < 0.65) {
+            if (score < 0.50) {
                 return { isOccluded: true, type: 'unclear', reason: t('Wajah tertutup atau kurang jelas') };
             }
 
