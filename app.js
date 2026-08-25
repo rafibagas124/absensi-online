@@ -986,11 +986,13 @@ function toggleSidebar(show) {
         let cameraSnapshot = null;
         let stableFaceFrames = 0;
         let snapshotCaptureInProgress = false;
+        let glassesCandidateFrames = 0;
 
         function resetCameraSnapshot() {
             cameraSnapshot = null;
             stableFaceFrames = 0;
             snapshotCaptureInProgress = false;
+            glassesCandidateFrames = 0;
             const statusEl = document.getElementById('cameraSnapshotStatus');
             if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-camera mr-1"></i>Menunggu wajah stabil...';
         }
@@ -1350,13 +1352,20 @@ function toggleSidebar(show) {
                 const reEdge = getRegionEdgeMetrics(canvasCtx, rightEye.x - ipd * 0.22, rightEye.y - ipd * 0.15, ipd * 0.44, ipd * 0.30, canvasW, canvasH);
 
                 if (foreheadStats.meanLuma > 40) {
-                    // Hanya tandai kacamata hitam yang sangat gelap pada kedua mata.
-                    // Garis wajah, alis, dan pantulan cahaya normal tidak cukup untuk memblokir absen.
                     const isDarkGlasses = (leStats.meanLuma < 25 && reStats.meanLuma < 25 && foreheadStats.meanLuma > 90) ||
                                           (leStats.meanLuma < foreheadStats.meanLuma * 0.22 && reStats.meanLuma < foreheadStats.meanLuma * 0.22 &&
                                            leStats.maxVal < 90 && reStats.maxVal < 90);
+                    const isGlassesFrame = (bridgeEdge.avgEdge >= 16 || bridgeEdge.maxEdge > 65 || bridgeEdge.contrast > 65) &&
+                                           (leEdge.maxEdge > 55 || reEdge.maxEdge > 55);
+                    const isBothLensGlare = leEdge.maxVal > 238 && reEdge.maxVal > 238 && foreheadStats.meanLuma < 205;
+                    const glassesSignal = isDarkGlasses || isGlassesFrame || isBothLensGlare;
 
-                    if (isDarkGlasses) {
+                    if (glassesSignal) {
+                        glassesCandidateFrames++;
+                    } else {
+                        glassesCandidateFrames = 0;
+                    }
+                    if (glassesCandidateFrames >= 2) {
                         return { isOccluded: true, type: 'glasses', reason: t('Mohon lepas kacamata Anda') };
                     }
                 }
@@ -1444,6 +1453,7 @@ function toggleSidebar(show) {
                     faceState.occlusionType = 'unclear';
                     faceState.score = 0;
                     stableFaceFrames = 0;
+                    glassesCandidateFrames = 0;
                     setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Tidak Terdeteksi')}`, 'bg-red-600/85 text-white');
                     setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: -')}`, 'bg-slate-700/85 text-slate-200');
                     if (faceState.wellLit) {
