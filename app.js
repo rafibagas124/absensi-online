@@ -60,7 +60,7 @@ function toggleSidebar(show) {
             return SHIFT_CONFIG[(user && user.shift) || 'pagi'];
         }
 
-        const SHIFT_REMINDER_MINUTES = 60;
+        const SHIFT_REMINDER_MINUTES = 30; // 30 menit sebelum jam shift masuk/pulang
         let shiftReminderTimer = null;
         let shiftReminderBusy = false;
         let lastShiftReminderConfigRefresh = 0;
@@ -69,18 +69,78 @@ function toggleSidebar(show) {
             return `absensipro_shift_reminder:${currentUser.company_id}:${currentUser.id}:${date}:${action}`;
         }
 
+        // ================== TOAST NOTIFIKASI SHIFT REMINDER (In-App) ==================
+        // Toast ini muncul di sudut kanan bawah layar, lebih mencolok dari alert biasa.
+        // Punya tombol "Absen Sekarang" yang langsung fokus ke tab absen.
+        function showShiftReminderToast(action, shiftCfg) {
+            // Hapus toast lama jika ada
+            const old = document.getElementById('shiftReminderToast');
+            if (old) old.remove();
+
+            const timeLabel = action === 'Masuk' ? shiftCfg.labelMasuk : shiftCfg.labelPulang;
+            const iconClass = action === 'Masuk' ? 'fa-right-to-bracket text-emerald-400' : 'fa-right-from-bracket text-rose-400';
+            const colorClass = action === 'Masuk' ? 'border-emerald-500' : 'border-rose-500';
+            const msgId   = t(`Pengingat: Shift ${shiftCfg.label} ${action} pukul ${timeLabel}`);
+            const msgBody = action === 'Masuk'
+                ? t(`Persiapkan diri Anda. Absen Masuk akan dibuka sebentar lagi.`)
+                : t(`Jangan lupa Absen Pulang sebelum meninggalkan kantor.`);
+
+            const toast = document.createElement('div');
+            toast.id = 'shiftReminderToast';
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.className = `fixed bottom-4 right-4 z-[9999] w-[320px] max-w-[calc(100vw-2rem)] bg-slate-800 border-l-4 ${colorClass} rounded-xl shadow-2xl p-4 flex flex-col gap-2 animate-bounce-once`;
+            toast.innerHTML = `
+                <div class="flex items-start gap-3">
+                    <i class="fa-solid ${iconClass} text-xl mt-0.5 flex-shrink-0"></i>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-white font-bold text-sm leading-tight">${t('Pengingat Shift')} — ${shiftCfg.label}</p>
+                        <p class="text-slate-300 text-xs mt-0.5 leading-snug">${msgBody}</p>
+                        <p class="text-slate-400 text-[10px] mt-1">${t('Jam')} ${action}: <span class="text-white font-semibold">${timeLabel}</span></p>
+                    </div>
+                    <button onclick="document.getElementById('shiftReminderToast')?.remove()" class="text-slate-500 hover:text-white ml-1 flex-shrink-0" title="${t('Tutup')}">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <button onclick="switchMainTab('absen'); document.getElementById('shiftReminderToast')?.remove();"
+                    class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-1.5 px-3 rounded-lg transition">
+                    <i class="fa-solid fa-clock-rotate-left mr-1"></i>${t('Absen Sekarang')}
+                </button>
+            `;
+
+            document.body.appendChild(toast);
+
+            // Hilangkan otomatis setelah 20 detik (tidak terlalu mengganggu)
+            setTimeout(() => {
+                const el = document.getElementById('shiftReminderToast');
+                if (el) el.remove();
+            }, 20000);
+
+            // Vibrate (mobile) jika tersedia
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        }
+
         function sendShiftReminder(action, shiftCfg, minutesUntil) {
             const date = new Date().toISOString().split('T')[0];
             const storageKey = getReminderStorageKey(action, date);
             if (localStorage.getItem(storageKey) === 'sent') return;
 
-            const message = action === 'Masuk'
-                ? `Pengingat: Anda memiliki Shift ${shiftCfg.label} pukul ${shiftCfg.labelMasuk}. Silakan siapkan Absen Masuk.`
-                : `Pengingat: waktu Absen Pulang Shift ${shiftCfg.label} pukul ${shiftCfg.labelPulang} sudah mendekat. Jangan lupa Absen Pulang.`;
-            showAlert(message, 'info');
+            // Tampilkan toast in-app yang mencolok
+            showShiftReminderToast(action, shiftCfg);
+
+            // Kirim juga notifikasi OS (jika izin sudah diberikan)
             if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                new Notification('Pengingat AbsensiPro', { body: message, tag: `${action}-${date}` });
+                const body = action === 'Masuk'
+                    ? t(`Shift ${shiftCfg.label} dimulai pukul ${shiftCfg.labelMasuk}. Jangan lupa Absen Masuk!`)
+                    : t(`Waktu Absen Pulang Shift ${shiftCfg.label} pukul ${shiftCfg.labelPulang} sudah mendekat.`);
+                new Notification(t('Pengingat AbsensiPro 🔔'), {
+                    body,
+                    tag:  `shift-${action}-${date}`,
+                    icon: './icons/icon-192.png',
+                    badge: './icons/icon-192.png'
+                });
             }
+
             localStorage.setItem(storageKey, 'sent');
         }
 
@@ -88,26 +148,34 @@ function toggleSidebar(show) {
             if (shiftReminderBusy || !currentUser || !['karyawan', 'staff', 'magang'].includes(currentUser.role)) return;
             shiftReminderBusy = true;
             try {
-                if (Date.now() - lastShiftReminderConfigRefresh > 300000) {
+                // Refresh config dari server setiap 1 menit (bukan 5) agar perubahan admin langsung terasa
+                if (Date.now() - lastShiftReminderConfigRefresh > 60000) {
                     await loadShiftConfigsFromServer();
                     lastShiftReminderConfigRefresh = Date.now();
+                    // Update tampilan jam shift di card staff jika ada perubahan
+                    if (typeof setupKaryawanView === 'function') setupKaryawanView();
                 }
                 const shiftCfg = getShiftConfig(currentUser);
                 if (!shiftCfg) return;
                 const now = new Date();
                 const minutesNow = now.getHours() * 60 + now.getMinutes();
-                const masukAt = shiftCfg.jamMasuk * 60 + shiftCfg.menitMasuk;
-                const pulangAt = shiftCfg.jamPulang * 60 + shiftCfg.menitPulang;
+                const masukAt   = shiftCfg.jamMasuk  * 60 + shiftCfg.menitMasuk;
+                const pulangAt  = shiftCfg.jamPulang * 60 + shiftCfg.menitPulang;
+                const date = now.toISOString().split('T')[0];
+
+                // Cek log absensi hari ini
                 let logs = typeof sbGetMyTodayLog === 'function' ? await sbGetMyTodayLog(currentUser.id) : [];
                 if ((!logs || logs.length === 0) && !navigator.onLine) {
                     logs = absensiLogs.filter(log => log.userId === currentUser.id && log.tanggal === date);
                 }
-                const hasMasuk = logs.some(log => log.tipe === 'Masuk');
+                const hasMasuk  = logs.some(log => log.tipe === 'Masuk');
                 const hasPulang = logs.some(log => log.tipe === 'Pulang');
 
+                // Kirim reminder masuk: 30 menit sebelum jam masuk dan belum absen masuk
                 if (!hasMasuk && minutesNow >= masukAt - SHIFT_REMINDER_MINUTES && minutesNow <= masukAt) {
                     sendShiftReminder('Masuk', shiftCfg, masukAt - minutesNow);
                 }
+                // Kirim reminder pulang: 30 menit sebelum jam pulang, sudah masuk tapi belum pulang
                 if (hasMasuk && !hasPulang && minutesNow >= pulangAt - SHIFT_REMINDER_MINUTES && minutesNow <= pulangAt) {
                     sendShiftReminder('Pulang', shiftCfg, pulangAt - minutesNow);
                 }
@@ -126,6 +194,146 @@ function toggleSidebar(show) {
             if (shiftReminderTimer) clearInterval(shiftReminderTimer);
             shiftReminderTimer = null;
         }
+
+        // ================== PUSH NOTIFICATIONS (WEB PUSH via VAPID) ==================
+        let pushNotifEnabled = false;
+
+        // Cek apakah push notification sudah aktif (dari localStorage flag)
+        function checkPushNotifStatus() {
+            pushNotifEnabled = localStorage.getItem(`absensipro_push_active:${currentUser?.id}`) === '1'
+                && typeof Notification !== 'undefined'
+                && Notification.permission === 'granted';
+            updatePushNotifCard();
+        }
+
+        function updatePushNotifCard() {
+            const card  = document.getElementById('pushNotifCard');
+            const btn   = document.getElementById('btnEnablePush');
+            const btnOff = document.getElementById('btnDisablePush');
+            const statusEl = document.getElementById('pushNotifStatus');
+            if (!card) return;
+
+            if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+                card.innerHTML = `<div class="flex items-center gap-2 text-amber-600 text-xs"><i class="fa-solid fa-triangle-exclamation"></i><span>${t('Browser ini tidak mendukung notifikasi push.')}</span></div>`;
+                return;
+            }
+
+            if (pushNotifEnabled && Notification.permission === 'granted') {
+                if (statusEl) statusEl.innerHTML = `<i class="fa-solid fa-bell text-emerald-400 mr-1"></i><span class="text-emerald-400 font-semibold">${t('Notifikasi Aktif ✅')}</span>`;
+                if (btn)    btn.classList.add('hidden');
+                if (btnOff) btnOff.classList.remove('hidden');
+            } else {
+                if (statusEl) statusEl.innerHTML = `<i class="fa-regular fa-bell-slash text-slate-400 mr-1"></i><span class="text-slate-400">${t('Notifikasi belum aktif')}</span>`;
+                if (btn)    btn.classList.remove('hidden');
+                if (btnOff) btnOff.classList.add('hidden');
+            }
+        }
+
+        async function enablePushNotifications() {
+            const button = document.getElementById('btnEnablePush');
+            if (!currentUser || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+                return showAlert(t('Notifikasi perangkat tidak didukung browser ini.'), 'error');
+            }
+            if (button) { button.disabled = true; button.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>${t('Mengaktifkan...')}`; }
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    showAlert(t('Izin notifikasi ditolak. Aktifkan notifikasi dari pengaturan browser.'), 'error');
+                    return;
+                }
+                const configResponse = await fetch('./api/push-config');
+                if (!configResponse.ok) throw new Error(t('Layanan notifikasi belum dikonfigurasi di Vercel.'));
+                const { publicKey } = await configResponse.json();
+
+                const registration = await navigator.serviceWorker.ready;
+
+                // Konversi VAPID public key dari URL-safe base64 ke Uint8Array
+                const b64 = publicKey.replace(/-/g, '+').replace(/_/g, '/');
+                const padding = '='.repeat((4 - b64.length % 4) % 4);
+                const applicationServerKey = Uint8Array.from(atob(b64 + padding), c => c.charCodeAt(0));
+
+                const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+                const { data: sessionData } = await sb.auth.getSession();
+                const saveResponse = await fetch('./api/push-subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session?.access_token || ''}` },
+                    body: JSON.stringify({ subscription: subscription.toJSON() })
+                });
+                if (!saveResponse.ok) throw new Error(t('Gagal mendaftarkan perangkat untuk notifikasi.'));
+
+                localStorage.setItem(`absensipro_push_active:${currentUser.id}`, '1');
+                pushNotifEnabled = true;
+                updatePushNotifCard();
+                showAlert(t('Notifikasi pengingat shift berhasil diaktifkan.'), 'success');
+            } catch (error) {
+                showAlert(error.message || t('Notifikasi tidak dapat diaktifkan.'), 'error');
+            } finally {
+                if (button) { button.disabled = false; button.innerHTML = `<i class="fa-solid fa-bell mr-1"></i>${t('Aktifkan Notifikasi')}`; }
+            }
+        }
+
+        async function disablePushNotifications() {
+            const btnOff = document.getElementById('btnDisablePush');
+            if (btnOff) { btnOff.disabled = true; btnOff.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>${t('Menonaktifkan...')}`; }
+            try {
+                // Unsubscribe dari browser push manager
+                const registration = await navigator.serviceWorker.ready;
+                const sub = await registration.pushManager.getSubscription();
+                if (sub) await sub.unsubscribe();
+
+                // Hapus dari server
+                const { data: sessionData } = await sb.auth.getSession();
+                await fetch('./api/push-unsubscribe', {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${sessionData.session?.access_token || ''}` }
+                });
+
+                localStorage.removeItem(`absensipro_push_active:${currentUser.id}`);
+                pushNotifEnabled = false;
+                updatePushNotifCard();
+                showAlert(t('Notifikasi shift dinonaktifkan.'), 'success');
+            } catch (err) {
+                showAlert(err.message || t('Gagal menonaktifkan notifikasi.'), 'error');
+            } finally {
+                if (btnOff) { btnOff.disabled = false; btnOff.innerHTML = `<i class="fa-regular fa-bell-slash mr-1"></i>${t('Nonaktifkan Notifikasi')}`; }
+            }
+        }
+
+        // ================== SUPABASE REALTIME: PERUBAHAN SHIFT CONFIG ==================
+        // Ketika admin/hrd mengubah jam shift, semua client yang online langsung mendapat
+        // update tanpa perlu menunggu interval 1 menit berikutnya.
+        let shiftRealtimeChannel = null;
+
+        function setupShiftConfigRealtime() {
+            if (!currentUser || !sb || typeof sb.channel !== 'function') return;
+            // Bersihkan channel lama jika ada
+            if (shiftRealtimeChannel) {
+                sb.removeChannel(shiftRealtimeChannel);
+                shiftRealtimeChannel = null;
+            }
+            shiftRealtimeChannel = sb
+                .channel(`shift-config-company-${currentUser.company_id}`)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'shift_configs',
+                    filter: `company_id=eq.${currentUser.company_id}`
+                }, async () => {
+                    // Shift berubah: muat ulang config dan update UI
+                    await loadShiftConfigsFromServer();
+                    lastShiftReminderConfigRefresh = Date.now();
+                    if (typeof setupKaryawanView === 'function') setupKaryawanView();
+                })
+                .subscribe();
+        }
+
+        function teardownShiftConfigRealtime() {
+            if (shiftRealtimeChannel && sb && typeof sb.removeChannel === 'function') {
+                sb.removeChannel(shiftRealtimeChannel);
+                shiftRealtimeChannel = null;
+            }
+        }
+
 
         // ================== PERMINTAAN UBAH PASSWORD KARYAWAN (BUTUH PERSETUJUAN ADMIN/HRD) ==================
         let passwordRequests = JSON.parse(localStorage.getItem('absensi_pwreq')) || [];

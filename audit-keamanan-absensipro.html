@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Audit Keamanan AbsensiPro</title>
+<style>
+@page { size: A4; margin: 18mm; }
+body { font-family: Arial, sans-serif; color: #172033; line-height: 1.45; font-size: 11pt; }
+h1 { color: #123d63; margin-bottom: 4px; }
+h2 { color: #176b87; border-bottom: 1px solid #b8cbd6; padding-bottom: 4px; margin-top: 22px; }
+h3 { color: #234b68; margin-bottom: 4px; }
+.subtitle { color: #5b6875; margin-top: 0; }
+.box { background: #eef6f8; border-left: 4px solid #16839b; padding: 10px 12px; margin: 12px 0; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; }
+th, td { border: 1px solid #c6d3da; padding: 7px; text-align: left; vertical-align: top; }
+th { background: #e5eff3; }
+.good { color: #166534; font-weight: bold; }
+.warn { color: #9a3412; font-weight: bold; }
+code { background: #f0f2f4; padding: 1px 3px; }
+li { margin: 4px 0; }
+footer { margin-top: 24px; color: #697681; font-size: 9pt; border-top: 1px solid #ccd7dc; padding-top: 8px; }
+</style>
+</head>
+<body>
+<h1>Audit Keamanan AbsensiPro</h1>
+<p class="subtitle">Ringkasan untuk konsultasi teknis | 23 Agustus 2026</p>
+
+<div class="box"><strong>Kesimpulan singkat:</strong> project sudah memiliki fondasi SaaS multi-tenant dan beberapa lapisan keamanan, tetapi belum sepenuhnya bebas dari penyimpanan browser. Data utama diarahkan ke Supabase, sedangkan cache, antrean offline, preferensi, rate limit, audit lokal, dan session masih dapat berada di perangkat.</div>
+
+<h2>Keamanan yang Digunakan</h2>
+<table>
+<tr><th>Lapisan</th><th>Implementasi</th><th>Status</th></tr>
+<tr><td>Authentication</td><td>Supabase Auth untuk login, register, session, logout, reset password.</td><td class="good">Aktif</td></tr>
+<tr><td>Authorization</td><td>Role <code>admin</code>, <code>hrd</code>, <code>karyawan</code>/<code>magang</code> dan pemeriksaan akses.</td><td class="good">Aktif</td></tr>
+<tr><td>Multi-tenant</td><td><code>company_id</code> pada data dan filter tenant pada query.</td><td class="good">Aktif</td></tr>
+<tr><td>Database security</td><td>Supabase Row Level Security, policy berbasis user, tenant, dan role.</td><td>Aktif jika SQL sudah dijalankan di Supabase</td></tr>
+<tr><td>Input protection</td><td>Sanitasi HTML/text, validasi email, kode perusahaan, ID, GPS, file, password.</td><td class="good">Aktif</td></tr>
+<tr><td>Brute-force defense</td><td>Rate limit browser dan rate limit server PHP melalui tabel login attempts.</td><td>Aktif, tetapi browser-only dapat dilewati</td></tr>
+<tr><td>Password</td><td>Supabase mengelola password; sistem PHP memakai <code>password_hash</code>/<code>password_verify</code>.</td><td class="good">Aktif</td></tr>
+<tr><td>HTTP security</td><td>CSP, HSTS, X-Frame-Options, nosniff, Referrer Policy, Permissions Policy.</td><td class="good">Aktif</td></tr>
+<tr><td>CSRF</td><td>Token CSRF dan header khusus untuk jalur backend PHP.</td><td>Aktif terutama pada endpoint PHP</td></tr>
+<tr><td>Monitoring</td><td>Audit log lokal/Supabase, Sentry opsional, webhook alert.</td><td>Aktif sesuai konfigurasi</td></tr>
+<tr><td>File and location</td><td>Validasi file, GPS/geofence, face verification/liveness.</td><td>Aktif di sisi aplikasi</td></tr>
+<tr><td>PWA</td><td>Service worker, cache versioning, skipWaiting, clients.claim, update asset.</td><td class="good">Aktif</td></tr>
+</table>
+
+<h2>Penggunaan localStorage/sessionStorage</h2>
+<table>
+<tr><th>Key/fungsi</th><th>Tujuan</th><th>Catatan SaaS</th></tr>
+<tr><td><code>absensi_shift_config</code></td><td>Cache konfigurasi shift.</td><td class="warn">Sebaiknya hanya Supabase <code>shift_configs</code>.</td></tr>
+<tr><td><code>absensi_pwreq</code></td><td>Permintaan perubahan password.</td><td class="warn">Belum sinkron antar perangkat.</td></tr>
+<tr><td><code>absensi_logs</code></td><td>Cache/fallback log absensi.</td><td>Data utama sudah di Supabase, tetapi salinan lokal masih ada.</td></tr>
+<tr><td><code>absensi_security</code></td><td>Rate limit/login security per perangkat.</td><td>Dapat dihapus user; perlu rate limit server sebagai pertahanan utama.</td></tr>
+<tr><td><code>__absensi_audit_logs</code></td><td>Audit log lokal.</td><td>Jangan dianggap sebagai satu-satunya bukti audit.</td></tr>
+<tr><td>Bahasa, Sentry, webhook</td><td>Preferensi dan konfigurasi browser.</td><td>Wajar lokal, tetapi webhook/DSN perlu pengamanan.</td></tr>
+<tr><td><code>absensi_offline_queue</code></td><td>Antrean absensi saat offline.</td><td>Wajar untuk PWA, harus disinkron dan dibersihkan setelah sukses.</td></tr>
+<tr><td>CSRF token</td><td>Token sesi tab browser.</td><td>Wajar disimpan di <code>sessionStorage</code>.</td></tr>
+<tr><td>Supabase session</td><td>Persistensi login.</td><td>Default SDK Supabase menggunakan storage browser.</td></tr>
+</table>
+
+<h2>Hal yang Perlu Diperkuat</h2>
+<ol>
+<li>Pindahkan <code>passwordRequests</code> sepenuhnya ke tabel Supabase.</li>
+<li>Jadikan <code>shift_configs</code> Supabase sebagai satu-satunya sumber konfigurasi shift.</li>
+<li>Hapus fallback log sensitif dari <code>localStorage</code> atau enkripsi/cache dengan masa berlaku terbatas.</li>
+<li>Perketat policy Storage surat dokter berdasarkan <code>company_id</code> dan user/role.</li>
+<li>Evaluasi policy publik seperti <code>companies_insert_all</code>, <code>shift_insert_all</code>, dan <code>sec_logs_insert</code>.</li>
+<li>Hapus <code>unsafe-eval</code> dari CSP bila semua library sudah mendukung.</li>
+<li>Jangan menyimpan service-role key di frontend. Obfuscation Base64/XOR bukan enkripsi.</li>
+<li>Pastikan validasi final absensi tetap dilakukan server/database, bukan hanya JavaScript browser.</li>
+</ol>
+
+<h2>File Referensi</h2>
+<ul>
+<li><code>security.js</code>: sanitasi, rate limit, CSRF, audit, Sentry, webhook, backup.</li>
+<li><code>supabase_client.js</code>: Supabase Auth dan operasi data.</li>
+<li><code>supabase_schema.sql</code>: tabel, RLS, policy, trigger, storage.</li>
+<li><code>auth.php</code> dan <code>config.php</code>: autentikasi PHP lama, session, prepared statements, headers.</li>
+<li><code>vercel.json</code>: CSP dan security headers deployment.</li>
+<li><code>protect.js</code>: anti-iframe dan penghambat shortcut inspect.</li>
+<li><code>service-worker.js</code>: cache PWA dan update aset.</li>
+</ul>
+
+<footer>Dokumen ini adalah ringkasan teknis berdasarkan source project saat dibuat, bukan sertifikasi keamanan atau penetration test.</footer>
+</body>
+</html>

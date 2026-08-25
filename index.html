@@ -512,6 +512,9 @@
             <div id="userInfoSidebar" class="border-t border-white/10 px-5 py-4">
                 <p id="navUserName" class="font-semibold text-sm text-white">Nama User</p>
                 <p id="navUserRole" class="text-xs text-blue-400 capitalize mb-3">Role</p>
+                <button id="btnEnablePush" onclick="enablePushNotifications()" class="w-full bg-blue-600/90 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded-lg transition mb-2">
+                    <i class="fa-solid fa-bell mr-1"></i> Aktifkan Notifikasi
+                </button>
                 <button onclick="logout()" class="w-full bg-red-600/90 hover:bg-red-700 text-white text-xs px-3 py-2 rounded-lg transition">
                     <i class="fa-solid fa-right-from-bracket mr-1"></i> Logout
                 </button>
@@ -1528,7 +1531,7 @@
                 window.location.reload();
             });
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js?v=7', { updateViaCache: 'none' })
+                navigator.serviceWorker.register('./service-worker.js?v=10', { updateViaCache: 'none' })
                     .then((registration) => registration.update())
                     .catch((err) => console.warn('Service Worker gagal didaftarkan:', err));
             });

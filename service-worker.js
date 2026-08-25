@@ -2,7 +2,28 @@
 // Menyediakan caching app-shell & asset CDN agar aplikasi bisa diinstal & tetap terbuka
 // serta berfungsi penuh saat koneksi internet terputus (PWA Offline Mode).
 
-const CACHE_NAME = 'absensipro-cache-v8';
+const CACHE_NAME = 'absensipro-cache-v10';
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch (error) {}
+  event.waitUntil(self.registration.showNotification(payload.title || 'AbsensiPro', {
+    body: payload.body || 'Jangan lupa melakukan absensi sesuai shift Anda.',
+    tag: payload.tag || 'absensipro-reminder',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    data: payload.data || { url: './' }
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+    const target = event.notification.data?.url || './';
+    for (const client of windows) if ('focus' in client) return client.focus();
+    if (clients.openWindow) return clients.openWindow(target);
+  }));
+});
 
 // Berkas inti aplikasi (app shell) yang di-precache saat instalasi
 const APP_SHELL = [
