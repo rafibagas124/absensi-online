@@ -994,7 +994,7 @@ function toggleSidebar(show) {
             snapshotCaptureInProgress = false;
             glassesCandidateFrames = 0;
             const statusEl = document.getElementById('cameraSnapshotStatus');
-            if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-camera mr-1"></i>Menunggu wajah stabil...';
+            if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-camera mr-1"></i>Harap diam, sistem sedang menyiapkan pengambilan data wajah...';
         }
 
         function captureAutomaticSnapshot() {
@@ -1123,7 +1123,7 @@ function toggleSidebar(show) {
             preprocCanvas.height = h;
             preprocCtx.drawImage(sourceVideo, 0, 0, w, h);
 
-            if (brightness < 65) {
+            if (brightness < 50) {
                 try {
                     const imgData = preprocCtx.getImageData(0, 0, w, h);
                     const d = imgData.data;
@@ -1385,9 +1385,10 @@ function toggleSidebar(show) {
                 // Pengecekan kontras bayangan lubang hidung & garis bibir:
                 // Wajah terbuka: nostril memiliki bayangan gelap (minVal < 55) dan bibir memiliki garis celah mulut tajam (mouthEdge.maxEdge >= 35).
                 // Tertutup tangan/masker: nostril tertutup kulit tangan/kain (minVal tinggi) atau bibir tidak memiliki celah mulut normal.
-                const isNostrilCovered = (nostrilEdge.minVal > 70 && nostrilEdge.contrast < 34);
-                const isMouthCovered = (mouthEdge.maxEdge < 28) || (mouthStats.stdDev < 8.2);
-                const isHandOnFace = isNostrilCovered || (isMouthCovered && score < 0.85);
+                const isNostrilCovered = (nostrilEdge.minVal > 68 && nostrilEdge.contrast < 38);
+                const isMouthCovered = (mouthEdge.maxEdge < 32) || (mouthStats.stdDev < 9.5);
+                const isLowerFaceCovered = isNostrilCovered && isMouthCovered;
+                const isHandOnFace = isLowerFaceCovered || (isMouthCovered && noseMouthRatio < 0.22);
 
                 if (isGeometryAbnormal || isHandOnFace) {
                     return { isOccluded: true, type: 'mask', reason: t('Mohon lepas masker / jauhkan tangan dari wajah') };
