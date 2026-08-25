@@ -977,6 +977,7 @@ function toggleSidebar(show) {
         let faceModelsLoaded = false;
         let faceModelsLoading = false;
         let faceCheckInterval = null;
+        let faceAnalysisInProgress = false;
         let brightnessCanvas = document.createElement('canvas');
         let preprocCanvas = document.createElement('canvas');
         let preprocCtx = preprocCanvas.getContext('2d', { willReadFrequently: true });
@@ -1065,6 +1066,7 @@ function toggleSidebar(show) {
                     document.getElementById('btnCloseCamera').classList.remove('hidden');
                     loadFaceModels();
                     if (faceCheckInterval) clearInterval(faceCheckInterval);
+                    runFaceAnalysis();
                     faceCheckInterval = setInterval(runFaceAnalysis, 700);
                 })
                 .catch(err => showAlert('Gagal mengakses kamera: ' + err.message));
@@ -1407,6 +1409,16 @@ function toggleSidebar(show) {
         }
 
         async function runFaceAnalysis() {
+            if (faceAnalysisInProgress) return;
+            faceAnalysisInProgress = true;
+            try {
+                await runFaceAnalysisFrame();
+            } finally {
+                faceAnalysisInProgress = false;
+            }
+        }
+
+        async function runFaceAnalysisFrame() {
             const video = document.getElementById('webcam');
             if (!mediaStream || !video || video.readyState < 2) return;
 
