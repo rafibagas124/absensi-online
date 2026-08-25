@@ -929,6 +929,7 @@ function toggleSidebar(show) {
                         userId: item.userId,
                         nama: item.nama,
                         jabatan: item.jabatan,
+                        snapshot: item.snapshot,
                         nearestOffice: item.nearestOffice
                     });
                     await deleteOfflineAttendance(item.id);
@@ -982,6 +983,34 @@ function toggleSidebar(show) {
 
         // Status live hasil analisa AI, dipakai untuk gating tombol Absen Masuk/Pulang
         let faceState = { faceDetected: false, occluded: true, occlusionType: 'none', wellLit: false, lightStatus: 'unknown', score: 0, brightness: 128 };
+        let cameraSnapshot = null;
+        let stableFaceFrames = 0;
+        let snapshotCaptureInProgress = false;
+
+        function resetCameraSnapshot() {
+            cameraSnapshot = null;
+            stableFaceFrames = 0;
+            snapshotCaptureInProgress = false;
+            const statusEl = document.getElementById('cameraSnapshotStatus');
+            if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-camera mr-1"></i>Menunggu wajah stabil...';
+        }
+
+        function captureAutomaticSnapshot() {
+            if (cameraSnapshot || snapshotCaptureInProgress) return;
+            snapshotCaptureInProgress = true;
+            const statusEl = document.getElementById('cameraSnapshotStatus');
+            if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Harap diam, kamera sedang mengambil data wajah Anda...';
+            setTimeout(() => {
+                const snapshot = captureVideoSnapshot();
+                if (snapshot) {
+                    cameraSnapshot = snapshot;
+                    if (statusEl) statusEl.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i>Foto bukti siap dikirim bersama absensi.';
+                } else if (statusEl) {
+                    statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i>Foto belum siap, posisikan wajah di depan kamera.';
+                }
+                snapshotCaptureInProgress = false;
+            }, 700);
+        }
 
         async function loadFaceModels() {
             if (faceModelsLoaded) return;
@@ -1022,6 +1051,7 @@ function toggleSidebar(show) {
             const placeholder = document.getElementById('cameraPlaceholder');
             const overlay = document.getElementById('cameraOverlayInfo');
             const aiBar = document.getElementById('aiStatusBar');
+            resetCameraSnapshot();
             navigator.mediaDevices.getUserMedia({ video: true })
                 .then(stream => {
                     mediaStream = stream;
@@ -1050,6 +1080,7 @@ function toggleSidebar(show) {
             if (video) video.srcObject = null;
             if (faceCheckInterval) { clearInterval(faceCheckInterval); faceCheckInterval = null; }
             faceState = { faceDetected: false, occluded: true, occlusionType: 'none', wellLit: false, lightStatus: 'unknown', score: 0, brightness: 128 };
+            resetCameraSnapshot();
             hideAiWarning();
 
             if (placeholder) placeholder.classList.remove('hidden');
@@ -1426,6 +1457,7 @@ function toggleSidebar(show) {
                     faceState.occluded = true;
                     faceState.occlusionType = 'unclear';
                     faceState.score = 0;
+                    stableFaceFrames = 0;
                     setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Tidak Terdeteksi')}`, 'bg-red-600/85 text-white');
                     setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: -')}`, 'bg-slate-700/85 text-slate-200');
                     if (faceState.wellLit) {
@@ -1443,6 +1475,7 @@ function toggleSidebar(show) {
                 faceState.occlusionType = occCheck.type;
 
                 if (faceState.occluded) {
+                    stableFaceFrames = 0;
                     setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Tidak Valid')} (${Math.round(faceState.score*100)}%)`, 'bg-amber-600/85 text-white');
                     if (occCheck.type === 'mask') {
                         setAiBadge('badgeOcclusion', `<i class="fa-solid fa-mask mr-1"></i>${t('Oklusi: Wajah Tertutup / Masker')}`, 'bg-red-600/85 text-white');
@@ -1455,10 +1488,12 @@ function toggleSidebar(show) {
                         showAiWarning(occCheck.reason || t('Wajah tertutup atau kurang jelas'), 'occluded');
                     }
                 } else {
+                    stableFaceFrames++;
                     setAiBadge('badgeFace', `<i class="fa-solid fa-face-viewfinder mr-1"></i>${t('Wajah: Terdeteksi')} (${Math.round(faceState.score*100)}%)`, 'bg-emerald-600/85 text-white');
                     setAiBadge('badgeOcclusion', `<i class="fa-solid fa-circle-check mr-1"></i>${t('Oklusi: Wajah Terlihat Jelas')}`, 'bg-emerald-600/85 text-white');
                     if (faceState.wellLit) {
                         hideAiWarning();
+                        if (stableFaceFrames >= 3) captureAutomaticSnapshot();
                     }
                 }
             } catch (err) {
@@ -1629,6 +1664,9 @@ function toggleSidebar(show) {
                 }
                 return showAlert('<b>Pencahayaan kurang mendukung!</b> Sesuaikan pencahayaan ruangan (jangan terlalu gelap/terlalu terang) lalu coba lagi.');
             }
+            if (!cameraSnapshot) {
+                return showAlert('<b>Foto wajah belum siap!</b> Harap diam beberapa saat sampai kamera selesai mengambil foto otomatis.');
+            }
 
             // ================== GATING LOKASI GPS ==================
             if (currentLat === null || currentLng === null) {
@@ -1636,6 +1674,19 @@ function toggleSidebar(show) {
             }
             if (currentGPSSuspicious) {
                 return showAlert('<b>Terindikasi Fake GPS/Mock Location!</b> Akurasi lokasi tidak wajar. Nonaktifkan aplikasi fake GPS lalu coba lagi memakai GPS asli perangkat.');
+            }
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            const existingRecord = absensiLogs.find(l => l.userId === currentUser.id && l.tanggal === todayStr && l.tipe === 'Masuk');
+            const existingCheckout = absensiLogs.find(l => l.userId === currentUser.id && l.tanggal === todayStr && l.tipe === 'Pulang');
+            if (tipe === 'Masuk' && existingRecord && existingRecord.waktuMasuk && existingRecord.waktuMasuk !== '-') {
+                return showAlert('Anda sudah melakukan Absen Masuk hari ini!', 'error');
+            }
+            if (tipe === 'Pulang' && (!existingRecord || !existingRecord.waktuMasuk || existingRecord.waktuMasuk === '-')) {
+                return showAlert('<b>Gagal Pulang!</b> Anda belum melakukan Absen Masuk hari ini.', 'error');
+            }
+            if (tipe === 'Pulang' && existingCheckout) {
+                return showAlert('Anda sudah Absen Pulang untuk hari ini!', 'error');
             }
 
             const btnAbsenEl = document.getElementById(tipe === 'Masuk' ? 'btnAbsenMasuk' : 'btnAbsenPulang');
@@ -1656,6 +1707,7 @@ function toggleSidebar(show) {
                             userId: currentUser.id,
                             nama: currentUser.nama,
                             jabatan: currentUser.jabatan,
+                            snapshot: cameraSnapshot,
                             nearestOffice: currentNearestOffice
                         });
                     } catch (err) {
@@ -1696,7 +1748,7 @@ function toggleSidebar(show) {
                         timestamp: Date.now(),
                         isoDate: todayStr,
                         localTime: waktuStr,
-                        snapshot: captureVideoSnapshot()
+                        snapshot: cameraSnapshot
                     };
                     await saveOfflineAttendance(offlineRecord);
                 }
@@ -1773,6 +1825,7 @@ function toggleSidebar(show) {
                     }
                 }
 
+                resetCameraSnapshot();
                 renderMyStats();
 
             } catch (err) {
@@ -1967,7 +2020,7 @@ function toggleSidebar(show) {
             const recapCache = {};
 
             if (displayedLogs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="p-4 text-center text-slate-400 italic">Tidak ada data absensi untuk tanggal yang dipilih.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400 italic">Tidak ada data absensi untuk tanggal yang dipilih.</td></tr>`;
                 return;
             }
 
@@ -1988,6 +2041,9 @@ function toggleSidebar(show) {
                 const masaKerja = hitungMasaKerja(log.tglMasuk);
                 const durasi = hitungDurasiKerja(log.waktuMasuk, log.waktuPulang);
                 const shiftLabel = SHIFT_CONFIG[log.shift || 'pagi'] ? SHIFT_CONFIG[log.shift || 'pagi'].label : 'Pagi';
+                const fotoHtml = log.fotoAbsenPath
+                    ? `<button onclick="openAttendancePhoto('${encodeURIComponent(log.fotoAbsenPath)}')" class="text-blue-600 hover:text-blue-800 font-semibold" title="Lihat foto bukti"><i class="fa-solid fa-image mr-1"></i>Lihat</button>`
+                    : '<span class="text-slate-400">-</span>';
 
                 // Rekap total per-staff (di-cache supaya tidak dihitung ulang untuk staff yang sama)
                 if (!recapCache[log.userId]) recapCache[log.userId] = getEmployeeRecap(log.userId);
@@ -2011,9 +2067,20 @@ function toggleSidebar(show) {
                         <td class="p-3 font-bold text-slate-700">${durasi}</td>
                         <td class="p-3">${statusBadge}</td>
                         <td class="p-3">${rekapHtml}</td>
+                        <td class="p-3">${fotoHtml}</td>
                     </tr>
                 `;
             });
+        }
+
+        async function openAttendancePhoto(encodedPath) {
+            try {
+                const url = await sbGetAttendancePhotoUrl(decodeURIComponent(encodedPath));
+                if (!url) throw new Error('URL foto tidak tersedia.');
+                window.open(url, '_blank', 'noopener,noreferrer');
+            } catch (err) {
+                showAlert(err.message || 'Foto absensi tidak dapat dibuka.', 'error');
+            }
         }
 
         // ================== VERIFIKASI SURAT DOKTER (HRD & ADMIN) ==================

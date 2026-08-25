@@ -351,7 +351,7 @@ async function sbDeleteOfficeLocation(id) {
 // ATTENDANCE LOG FUNCTIONS
 // ============================================================
 
-async function sbSubmitAbsen({ tipe, lat, lng, accuracy, companyId, userId, nama, jabatan, nearestOffice }) {
+async function sbSubmitAbsen({ tipe, lat, lng, accuracy, companyId, userId, nama, jabatan, nearestOffice, snapshot }) {
     const now = new Date();
     const tanggal = now.toISOString().split('T')[0];
     const waktu = now.toTimeString().split(' ')[0];
@@ -378,7 +378,7 @@ async function sbSubmitAbsen({ tipe, lat, lng, accuracy, companyId, userId, nama
         nama,
         jabatan,
         tipe,
-        status: tipe === 'Masuk' ? 'Hadir' : null,
+        status: 'Hadir',
         tanggal,
         gps_lat: lat,
         gps_lng: lng,
@@ -389,6 +389,20 @@ async function sbSubmitAbsen({ tipe, lat, lng, accuracy, companyId, userId, nama
         status_validasi: statusValidasi,
         alasan_tolak: alasanTolak
     };
+
+    if (snapshot) {
+        const binary = atob(snapshot.split(',')[1]);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+        const path = `${companyId}/${userId}/${Date.now()}.jpg`;
+        const { error: uploadError } = await sb.storage.from('foto-absensi').upload(path, bytes, {
+            contentType: 'image/jpeg', cacheControl: '86400', upsert: false
+        });
+        if (uploadError) throw new Error('Gagal mengunggah foto absensi: ' + uploadError.message);
+        logData.foto_absen_path = path;
+        logData.foto_diambil_at = now.toISOString();
+        logData.status_verifikasi_foto = 'Menunggu Verifikasi';
+    }
 
     const { data, error } = await sb
         .from('attendance_logs')
@@ -603,6 +617,13 @@ async function sbUploadSuratDokter(file, companyId, userId) {
     return { path, url: urlData?.signedUrl || null, name: file.name };
 }
 
+async function sbGetAttendancePhotoUrl(path) {
+    if (!path) return null;
+    const { data, error } = await sb.storage.from('foto-absensi').createSignedUrl(path, 600);
+    if (error) throw new Error('Gagal membuka foto absensi: ' + error.message);
+    return data?.signedUrl || null;
+}
+
 // ============================================================
 // HELPER: Konversi data Supabase ke format app.js
 // ============================================================
@@ -611,6 +632,7 @@ function sbLogToAppFormat(log) {
     return {
         id: log.id,
         userId: log.user_id,
+        tipe: log.tipe || null,
         nama: log.nama || '',
         jabatan: log.jabatan || '',
         tglMasuk: log.tgl_masuk || null,
@@ -633,6 +655,9 @@ function sbLogToAppFormat(log) {
         catatanVerifikasi: log.catatan_verifikasi || '',
         verifikatorNama: log.verifikator_nama || '',
         suratDokter: log.surat_url ? { name: log.surat_nama, url: log.surat_url, dataUrl: log.surat_url } : null,
+        fotoAbsenPath: log.foto_absen_path || null,
+        fotoDiambilAt: log.foto_diambil_at || null,
+        statusVerifikasiFoto: log.status_verifikasi_foto || null,
     };
 }
 
