@@ -60,6 +60,73 @@ function toggleSidebar(show) {
             return SHIFT_CONFIG[(user && user.shift) || 'pagi'];
         }
 
+        const SHIFT_REMINDER_MINUTES = 60;
+        let shiftReminderTimer = null;
+        let shiftReminderBusy = false;
+        let lastShiftReminderConfigRefresh = 0;
+
+        function getReminderStorageKey(action, date) {
+            return `absensipro_shift_reminder:${currentUser.company_id}:${currentUser.id}:${date}:${action}`;
+        }
+
+        function sendShiftReminder(action, shiftCfg, minutesUntil) {
+            const date = new Date().toISOString().split('T')[0];
+            const storageKey = getReminderStorageKey(action, date);
+            if (localStorage.getItem(storageKey) === 'sent') return;
+
+            const message = action === 'Masuk'
+                ? `Pengingat: Anda memiliki Shift ${shiftCfg.label} pukul ${shiftCfg.labelMasuk}. Silakan siapkan Absen Masuk.`
+                : `Pengingat: waktu Absen Pulang Shift ${shiftCfg.label} pukul ${shiftCfg.labelPulang} sudah mendekat. Jangan lupa Absen Pulang.`;
+            showAlert(message, 'info');
+            if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                new Notification('Pengingat AbsensiPro', { body: message, tag: `${action}-${date}` });
+            }
+            localStorage.setItem(storageKey, 'sent');
+        }
+
+        async function checkShiftReminder() {
+            if (shiftReminderBusy || !currentUser || !['karyawan', 'staff', 'magang'].includes(currentUser.role)) return;
+            shiftReminderBusy = true;
+            try {
+                if (Date.now() - lastShiftReminderConfigRefresh > 300000) {
+                    await loadShiftConfigsFromServer();
+                    lastShiftReminderConfigRefresh = Date.now();
+                }
+                const shiftCfg = getShiftConfig(currentUser);
+                if (!shiftCfg) return;
+                const now = new Date();
+                const minutesNow = now.getHours() * 60 + now.getMinutes();
+                const masukAt = shiftCfg.jamMasuk * 60 + shiftCfg.menitMasuk;
+                const pulangAt = shiftCfg.jamPulang * 60 + shiftCfg.menitPulang;
+                let logs = typeof sbGetMyTodayLog === 'function' ? await sbGetMyTodayLog(currentUser.id) : [];
+                if ((!logs || logs.length === 0) && !navigator.onLine) {
+                    logs = absensiLogs.filter(log => log.userId === currentUser.id && log.tanggal === date);
+                }
+                const hasMasuk = logs.some(log => log.tipe === 'Masuk');
+                const hasPulang = logs.some(log => log.tipe === 'Pulang');
+
+                if (!hasMasuk && minutesNow >= masukAt - SHIFT_REMINDER_MINUTES && minutesNow <= masukAt) {
+                    sendShiftReminder('Masuk', shiftCfg, masukAt - minutesNow);
+                }
+                if (hasMasuk && !hasPulang && minutesNow >= pulangAt - SHIFT_REMINDER_MINUTES && minutesNow <= pulangAt) {
+                    sendShiftReminder('Pulang', shiftCfg, pulangAt - minutesNow);
+                }
+            } finally {
+                shiftReminderBusy = false;
+            }
+        }
+
+        function startShiftReminder() {
+            if (shiftReminderTimer) clearInterval(shiftReminderTimer);
+            checkShiftReminder();
+            shiftReminderTimer = setInterval(checkShiftReminder, 30000);
+        }
+
+        function stopShiftReminder() {
+            if (shiftReminderTimer) clearInterval(shiftReminderTimer);
+            shiftReminderTimer = null;
+        }
+
         // ================== PERMINTAAN UBAH PASSWORD KARYAWAN (BUTUH PERSETUJUAN ADMIN/HRD) ==================
         let passwordRequests = JSON.parse(localStorage.getItem('absensi_pwreq')) || [];
         function savePwReqToStorage() { localStorage.setItem('absensi_pwreq', JSON.stringify(passwordRequests)); }
@@ -288,6 +355,7 @@ function toggleSidebar(show) {
                 // Muat ulang data setelah login berhasil
                 await loadOfficeLocationsFromServer();
                 await loadAbsensiLogsFromSupabase();
+                startShiftReminder();
                 showAlert(`Selamat datang kembali, <b>${currentUser.nama}</b>!`, 'success');
                 checkSession();
             } catch (err) {
@@ -314,6 +382,7 @@ function toggleSidebar(show) {
                     currentUser = mergeLocalProfileFields(userData);
                     await loadShiftConfigsFromServer();
                     await loadAbsensiLogsFromSupabase();
+                    startShiftReminder();
                 } else {
                     currentUser = null;
                 }
@@ -394,6 +463,7 @@ function toggleSidebar(show) {
             }
             currentUser = null;
             absensiLogs = [];
+            stopShiftReminder();
             stopCamera();
             checkSession();
             showAlert('Anda telah keluar dari sistem.', 'success');
