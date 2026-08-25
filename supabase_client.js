@@ -651,6 +651,7 @@ function sbLogToAppFormat(log) {
         jarakMeter: log.jarak_meter,
         kantorNama: log.kantor_nama,
         kantorId: log.kantor_id,
+        statusValidasi: log.status_validasi || null,
         statusVerifikasi: log.status_verifikasi,
         catatanVerifikasi: log.catatan_verifikasi || '',
         verifikatorNama: log.verifikator_nama || '',

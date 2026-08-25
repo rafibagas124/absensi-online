@@ -327,7 +327,7 @@ function toggleSidebar(show) {
         // Load semua log absensi dari Supabase ke variabel absensiLogs
         async function loadAbsensiLogsFromSupabase() {
             try {
-                const rawLogs = await sbGetAttendanceLogs();
+                const rawLogs = await sbGetAttendanceLogs({ companyId: currentUser ? currentUser.company_id : null });
                 absensiLogs = rawLogs.map(sbLogToAppFormat);
                 saveLogsToStorage();
             } catch (err) {
@@ -2080,6 +2080,40 @@ function toggleSidebar(show) {
                     </tr>
                 `;
             });
+        }
+
+        function exportAttendanceExcel() {
+            if (!currentUser || !['admin', 'hrd'].includes(currentUser.role)) {
+                return showAlert('Hanya Admin/HRD yang dapat mengunduh laporan absensi.', 'error');
+            }
+            const filterVal = document.getElementById('filterDate')?.value || '';
+            const logs = (filterVal ? absensiLogs.filter(log => log.tanggal === filterVal) : absensiLogs).filter(log => log.userId);
+            if (logs.length === 0) return showAlert('Tidak ada data absensi untuk diunduh.', 'error');
+
+            const escapeExcelCell = value => {
+                const text = String(value === null || value === undefined ? '' : value);
+                const protectedText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+                return `"${protectedText.replace(/"/g, '""')}"`;
+            };
+            const rows = [
+                ['Tanggal', 'Nama', 'ID Staff', 'Jabatan', 'Tipe', 'Status', 'Jam Masuk', 'Jam Pulang', 'Durasi Kerja', 'Kantor', 'Jarak (meter)', 'Akurasi GPS (meter)', 'Status Validasi', 'Status Verifikasi Foto', 'Waktu Foto'],
+                ...logs.map(log => [
+                    log.tanggal, log.nama, log.userId, log.jabatan, log.tipe || '', log.status,
+                    log.waktuMasuk, log.waktuPulang, hitungDurasiKerja(log.waktuMasuk, log.waktuPulang),
+                    log.kantorNama || '', log.jarakMeter ?? '', log.gpsAccuracy ?? '',
+                    log.statusValidasi || '', log.statusVerifikasiFoto || '', log.fotoDiambilAt || ''
+                ])
+            ];
+            const csv = rows.map(row => row.map(escapeExcelCell).join(';')).join('\r\n');
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `Laporan-Absensi-${filterVal || 'Semua-Tanggal'}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
         }
 
         async function openAttendancePhoto(encodedPath) {

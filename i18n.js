@@ -443,6 +443,8 @@
         "Cetak Laporan": "Print Report",
         "Unduh CSV": "Download CSV",
         "Unduh Excel": "Download Excel",
+        "Hanya Admin/HRD yang dapat mengunduh laporan absensi.": "Only Admin/HR can download attendance reports.",
+        "Tidak ada data absensi untuk diunduh.": "There is no attendance data to download.",
         "Tidak ada data izin/cuti pada bulan ini untuk diunduh.": "No leave/time-off data this month to download.",
         "s/d": "to",
         "hari": "day(s)",
