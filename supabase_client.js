@@ -429,13 +429,17 @@ async function sbGetAttendanceLogs({ tanggal = null, companyId = null } = {}) {
     return data || [];
 }
 
-async function sbGetMyTodayLog(userId) {
+async function sbGetMyTodayLog(userId, includePreviousDay = false) {
     const today = new Date().toISOString().split('T')[0];
+    const previousDate = new Date();
+    previousDate.setDate(previousDate.getDate() - 1);
+    const previous = previousDate.toISOString().split('T')[0];
+    const dates = includePreviousDay ? [previous, today] : [today];
     const { data, error } = await sb
         .from('attendance_logs')
         .select('*')
         .eq('user_id', userId)
-        .eq('tanggal', today)
+        .in('tanggal', dates)
         .order('created_at', { ascending: true });
     if (error) return [];
     return data;
@@ -581,7 +585,8 @@ async function sbUpsertShiftConfig({ companyId, shiftKey, label, jamMasuk, menit
 async function sbInsertDefaultShifts(companyId) {
     const defaults = [
         { company_id: companyId, shift_key: 'pagi',  label: 'Pagi',  jam_masuk: 8,  menit_masuk: 0, jam_pulang: 16, menit_pulang: 0, toleransi: 15 },
-        { company_id: companyId, shift_key: 'siang', label: 'Siang', jam_masuk: 13, menit_masuk: 0, jam_pulang: 21, menit_pulang: 0, toleransi: 15 }
+        { company_id: companyId, shift_key: 'siang', label: 'Siang', jam_masuk: 13, menit_masuk: 0, jam_pulang: 21, menit_pulang: 0, toleransi: 15 },
+        { company_id: companyId, shift_key: 'malam', label: 'Malam', jam_masuk: 22, menit_masuk: 0, jam_pulang: 6, menit_pulang: 0, toleransi: 15 }
     ];
     await sb.from('shift_configs').insert(defaults).then(() => {});
 }

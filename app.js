@@ -30,7 +30,8 @@ function toggleSidebar(show) {
         // ================== KONFIGURASI SHIFT KERJA (SUMBER UTAMA: SUPABASE) ==================
         const DEFAULT_SHIFT_CONFIG = {
             pagi:  { label: "Pagi",  jamMasuk: 8,  menitMasuk: 0, jamPulang: 16, menitPulang: 0, toleransi: 15, labelMasuk: "08:00 WIB", labelPulang: "16:00 WIB" },
-            siang: { label: "Siang", jamMasuk: 13, menitMasuk: 0, jamPulang: 21, menitPulang: 0, toleransi: 15, labelMasuk: "13:00 WIB", labelPulang: "21:00 WIB" }
+            siang: { label: "Siang", jamMasuk: 13, menitMasuk: 0, jamPulang: 21, menitPulang: 0, toleransi: 15, labelMasuk: "13:00 WIB", labelPulang: "21:00 WIB" },
+            malam: { label: "Malam", jamMasuk: 22, menitMasuk: 0, jamPulang: 6, menitPulang: 0, toleransi: 15, labelMasuk: "22:00 WIB", labelPulang: "06:00 WIB" }
         };
         let SHIFT_CONFIG = JSON.parse(JSON.stringify(DEFAULT_SHIFT_CONFIG));
         // Migrasi: pastikan field lengkap (jaga-jaga config lama tersimpan sebagian)
@@ -187,7 +188,8 @@ function toggleSidebar(show) {
                 const minutesNow = now.getHours() * 60 + now.getMinutes();
                 const masukAt = shiftCfg.jamMasuk * 60 + shiftCfg.menitMasuk;
                 const pulangAt = shiftCfg.jamPulang * 60 + shiftCfg.menitPulang;
-                let logs = typeof sbGetMyTodayLog === 'function' ? await sbGetMyTodayLog(currentUser.id) : [];
+                const isOvernight = pulangAt <= masukAt;
+                let logs = typeof sbGetMyTodayLog === 'function' ? await sbGetMyTodayLog(currentUser.id, isOvernight) : [];
                 if ((!logs || logs.length === 0) && !navigator.onLine) {
                     logs = absensiLogs.filter(log => log.userId === currentUser.id && log.tanggal === date);
                 }
@@ -197,7 +199,10 @@ function toggleSidebar(show) {
                 if (!hasMasuk && minutesNow >= masukAt - SHIFT_REMINDER_MINUTES && minutesNow <= masukAt) {
                     sendShiftReminder('Masuk', shiftCfg, masukAt - minutesNow);
                 }
-                if (hasMasuk && !hasPulang && minutesNow >= pulangAt - SHIFT_REMINDER_MINUTES && minutesNow <= pulangAt) {
+                const nearCheckout = isOvernight
+                    ? minutesNow >= pulangAt - SHIFT_REMINDER_MINUTES && minutesNow <= pulangAt
+                    : minutesNow >= pulangAt - SHIFT_REMINDER_MINUTES && minutesNow <= pulangAt;
+                if (hasMasuk && !hasPulang && nearCheckout) {
                     sendShiftReminder('Pulang', shiftCfg, pulangAt - minutesNow);
                 }
             } finally {
