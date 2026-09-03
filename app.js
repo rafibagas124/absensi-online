@@ -48,6 +48,7 @@ function toggleSidebar(show) {
                 labelMasuk: `${pad2(config.jam_masuk)}:${pad2(config.menit_masuk)} WIB`,
                 labelPulang: `${pad2(config.jam_pulang)}:${pad2(config.menit_pulang)} WIB`
             }]));
+            refreshShiftSelectOptions();
             if (currentUser) {
                 localStorage.setItem(`absensipro_shift_config:${currentUser.company_id}`, JSON.stringify(SHIFT_CONFIG));
             }
@@ -81,6 +82,22 @@ function toggleSidebar(show) {
         function pad2(n) { return String(n).padStart(2, '0'); }
         function getShiftConfig(user) {
             return SHIFT_CONFIG[(user && user.shift) || 'pagi'];
+        }
+
+        function refreshShiftSelectOptions() {
+            ['addShift', 'shiftModalSelect'].forEach(selectId => {
+                const select = document.getElementById(selectId);
+                if (!select) return;
+                const selectedValue = select.value;
+                select.replaceChildren();
+                Object.entries(SHIFT_CONFIG).forEach(([key, config]) => {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = `Shift ${config.label} (${config.labelMasuk} - ${config.labelPulang})`;
+                    select.appendChild(option);
+                });
+                if (SHIFT_CONFIG[selectedValue]) select.value = selectedValue;
+            });
         }
 
         const SHIFT_REMINDER_MINUTES = 60;
@@ -2722,6 +2739,7 @@ function toggleSidebar(show) {
             const u = users.find(x => x.id === userId);
             if (!u) return;
             activeShiftUserId = userId;
+            refreshShiftSelectOptions();
             document.getElementById('shiftModalNama').innerText = `${u.nama} (${u.id}) - ${u.jabatan}`;
             document.getElementById('shiftModalSelect').value = u.shift || 'pagi';
             document.getElementById('shiftModal').classList.remove('hidden');
@@ -2986,6 +3004,7 @@ function toggleSidebar(show) {
                 return;
             }
             closeShiftTimeModal();
+            refreshShiftSelectOptions();
             renderShiftMasterTable();
             showAlert(`Jam kerja Shift <b>${cfg.label}</b> berhasil diubah menjadi <b>${cfg.labelMasuk} - ${cfg.labelPulang}</b>.`, 'success');
             // Sinkronkan tampilan jika user yang sedang login memakai shift ini
