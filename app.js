@@ -335,7 +335,6 @@ function toggleSidebar(show) {
             loadOfficeLocationsFromServer(); // ambil daftar kantor dari Supabase
             updateOfflineUI(); // inisialisasi status koneksi & antrean offline PWA
             setInterval(updateOverlayTime, 1000);
-            setTimeout(loadFaceModels, 800); // preload model AI di background
             setTimeout(initGoogleSignIn, 500); // tunggu script Google Identity Services siap
             setTimeout(() => syncOfflineQueue(false), 2500); // otomatis sinkron antrean offline jika ada saat start
         });
@@ -1119,6 +1118,11 @@ function toggleSidebar(show) {
         // Model dimuat langsung dari hosting lokal (./models) dengan fallback CDN jika diperlukan
         const LOCAL_MODEL_URL = './models';
         const CDN_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+        const isLowPowerDevice = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4)
+            || (navigator.deviceMemory && navigator.deviceMemory <= 2);
+        const FACE_ANALYSIS_INTERVAL = isLowPowerDevice ? 1300 : 700;
+        const FACE_INPUT_SIZE = isLowPowerDevice ? 224 : 320;
+        const FACE_PROCESSING_WIDTH = isLowPowerDevice ? 224 : 320;
         let faceModelsLoaded = false;
         let faceModelsLoading = false;
         let faceCheckInterval = null;
@@ -1212,7 +1216,7 @@ function toggleSidebar(show) {
                     loadFaceModels();
                     if (faceCheckInterval) clearInterval(faceCheckInterval);
                     runFaceAnalysis();
-                    faceCheckInterval = setInterval(runFaceAnalysis, 700);
+                    faceCheckInterval = setInterval(runFaceAnalysis, FACE_ANALYSIS_INTERVAL);
                 })
                 .catch(err => showAlert('Gagal mengakses kamera: ' + err.message));
         }
@@ -1264,7 +1268,7 @@ function toggleSidebar(show) {
 
         // Image Preprocessing: Adaptive Histogram / Gamma CLAHE filter untuk lingkungan gelap
         function applyImagePreprocessing(sourceVideo, brightness) {
-            const w = 320;
+            const w = FACE_PROCESSING_WIDTH;
             const h = Math.round(320 * (sourceVideo.videoHeight / (sourceVideo.videoWidth || 1))) || 240;
             preprocCanvas.width = w;
             preprocCanvas.height = h;
@@ -1565,7 +1569,7 @@ function toggleSidebar(show) {
 
         async function runFaceAnalysisFrame() {
             const video = document.getElementById('webcam');
-            if (!mediaStream || !video || video.readyState < 2) return;
+            if (document.hidden || !mediaStream || !video || video.readyState < 2) return;
 
             // 1. LIGHT DETECTION & PREPROCESSING
             const brightness = measureBrightness(video);
@@ -1602,7 +1606,7 @@ function toggleSidebar(show) {
             try {
                 const processSource = applyImagePreprocessing(video, brightness);
                 const detection = await faceapi
-                    .detectSingleFace(processSource, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.48 }))
+                    .detectSingleFace(processSource, new faceapi.TinyFaceDetectorOptions({ inputSize: FACE_INPUT_SIZE, scoreThreshold: 0.48 }))
                     .withFaceLandmarks(true);
 
                 if (!detection) {
