@@ -38,3 +38,15 @@ AbsensiPro adalah aplikasi presensi berbasis web yang dirancang untuk mengelola 
 ## Persyaratan Deploy & Keamanan Akses Perangkat
 
 Untuk memastikan `MediaDevices API` (kamera) dan `Geolocation API` (GPS) dapat berfungsi pada seluruh peramban lintas platform (Android, iOS, macOS, Windows), aplikasi **wajib** di-host menggunakan protokol HTTPS. Lingkungan pengujian seperti Vercel, Netlify, atau GitHub Pages secara otomatis menyediakan sertifikat SSL yang diperlukan.
+
+## Konfigurasi Environment
+
+Salin `.env.example` menjadi `.env` untuk build lokal, lalu isi `SUPABASE_URL` dan `SUPABASE_ANON_KEY` dengan konfigurasi publik project Supabase. File `.env` tidak boleh di-commit.
+
+Untuk Vercel, masukkan nilai tersebut melalui Project Settings → Environment Variables. Secret server seperti `SUPABASE_SERVICE_ROLE_KEY`, `VAPID_PRIVATE_KEY`, dan `CRON_SECRET` hanya boleh disimpan sebagai environment variable server, tidak di frontend.
+
+Jalankan `npm run build` setelah environment tersedia. Build akan menghasilkan bundle frontend ter-obfuscate di `dist/`; publishable/anon key tetap dapat terlihat di browser karena memang merupakan konfigurasi publik frontend.
+
+## Scheduler Web Push Paket Gratis
+
+Pengiriman push saat aplikasi tertutup dijalankan oleh GitHub Actions setiap 5 menit agar kompatibel dengan Vercel Hobby. Tambahkan `PUSH_CRON_URL` (contoh `https://domain-anda.vercel.app/api/push-cron`) dan `CRON_SECRET` di Repository Settings → Secrets and variables → Actions. Nilai `CRON_SECRET` yang sama juga harus disimpan di Vercel Environment Variables.

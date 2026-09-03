@@ -1,0 +1,25 @@
+name: Send Shift Push Notifications
+
+on:
+  schedule:
+    # GitHub Actions is used because Vercel Hobby only supports daily cron jobs.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invoke push scheduler
+        env:
+          PUSH_CRON_URL: ${{ secrets.PUSH_CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$PUSH_CRON_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "PUSH_CRON_URL and CRON_SECRET must be configured as GitHub Actions secrets."
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            --retry 2 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$PUSH_CRON_URL"

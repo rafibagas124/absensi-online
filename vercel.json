@@ -2,9 +2,6 @@
     "version": 2,
     "buildCommand": "npm run build",
     "outputDirectory": "dist",
-    "crons": [
-        { "path": "/api/push-cron", "schedule": "* * * * *" }
-    ],
     "rewrites": [
         { "source": "/api/(.*)", "destination": "/api/$1" },
         { "source": "/(.*)", "destination": "/index.html" }
