@@ -170,7 +170,7 @@ function toggleSidebar(show) {
         }
 
         async function checkShiftReminder() {
-            if (shiftReminderBusy || !currentUser || !['karyawan', 'staff', 'magang'].includes(currentUser.role)) return;
+            if (shiftReminderBusy || !currentUser || !['admin', 'hrd', 'karyawan', 'staff', 'magang'].includes(currentUser.role)) return;
             shiftReminderBusy = true;
             try {
                 if (Date.now() - lastShiftReminderConfigRefresh > 300000) {

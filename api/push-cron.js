@@ -56,7 +56,7 @@ export default async function handler(req, res) {
 
   for (const item of subscriptions) {
     const profile = profiles[item.user_id];
-    if (!profile || !['karyawan', 'staff', 'magang'].includes(profile.role)) continue;
+    if (!profile || !['admin', 'hrd', 'karyawan', 'staff', 'magang'].includes(profile.role)) continue;
     const shift = shiftMap[`${profile.company_id}:${profile.shift || 'pagi'}`];
     if (!shift) continue;
     const now = localTime(item.timezone);
