@@ -29,6 +29,28 @@ const APP_SHELL = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
 ];
 
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (err) {}
+  event.waitUntil(self.registration.showNotification(data.title || 'AbsensiPro', {
+    body: data.body || 'Ada pengingat absensi.',
+    tag: data.tag || 'absensipro-reminder',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    data: { url: data.url || './' }
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+    const target = new URL(event.notification.data?.url || './', self.location.origin).href;
+    const existing = windows.find((client) => client.url === target);
+    if (existing) return existing.focus();
+    return clients.openWindow(target);
+  }));
+});
+
 // INSTALL: precache app shell
 self.addEventListener('install', (event) => {
   self.skipWaiting();

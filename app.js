@@ -48,12 +48,35 @@ function toggleSidebar(show) {
                 labelMasuk: `${pad2(config.jam_masuk)}:${pad2(config.menit_masuk)} WIB`,
                 labelPulang: `${pad2(config.jam_pulang)}:${pad2(config.menit_pulang)} WIB`
             }]));
+            if (currentUser) {
+                localStorage.setItem(`absensipro_shift_config:${currentUser.company_id}`, JSON.stringify(SHIFT_CONFIG));
+            }
         }
 
         async function loadShiftConfigsFromServer() {
             if (!currentUser || typeof sbGetShiftConfigs !== 'function') return;
-            try { applyServerShiftConfigs(await sbGetShiftConfigs(currentUser.company_id)); }
-            catch (err) { console.error('Gagal memuat konfigurasi shift:', err); }
+            try {
+                const configs = await sbGetShiftConfigs(currentUser.company_id);
+                if (Array.isArray(configs) && configs.length > 0) {
+                    applyServerShiftConfigs(configs);
+                    return;
+                }
+                throw new Error('Konfigurasi shift tidak tersedia.');
+            } catch (err) {
+                const cached = localStorage.getItem(`absensipro_shift_config:${currentUser.company_id}`);
+                if (cached) {
+                    try { applyServerShiftConfigs(Object.entries(JSON.parse(cached)).map(([shift_key, config]) => ({
+                        shift_key,
+                        label: config.label,
+                        jam_masuk: config.jamMasuk,
+                        menit_masuk: config.menitMasuk,
+                        jam_pulang: config.jamPulang,
+                        menit_pulang: config.menitPulang,
+                        toleransi: config.toleransi
+                    }))); } catch (cacheErr) { console.error('Cache shift tidak valid:', cacheErr); }
+                }
+                console.error('Gagal memuat konfigurasi shift:', err);
+            }
         }
         function pad2(n) { return String(n).padStart(2, '0'); }
         function getShiftConfig(user) {
@@ -84,17 +107,66 @@ function toggleSidebar(show) {
             localStorage.setItem(storageKey, 'sent');
         }
 
+        async function requestShiftReminderPermission() {
+            if (typeof Notification === 'undefined' || Notification.permission !== 'default') return;
+            try { await Notification.requestPermission(); } catch (err) { /* permission may be blocked by the browser */ }
+        }
+
+        function pushKeyToBytes(key) {
+            const padding = '='.repeat((4 - key.length % 4) % 4);
+            const raw = atob((key + padding).replace(/-/g, '+').replace(/_/g, '/'));
+            return Uint8Array.from(raw, char => char.charCodeAt(0));
+        }
+
+        async function registerShiftPushSubscription() {
+            if (!currentUser || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+            if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+            try {
+                const { data: { session } } = await sb.auth.getSession();
+                if (!session) return;
+                const configResponse = await fetch('/api/push-subscribe');
+                if (!configResponse.ok) return;
+                const { publicKey } = await configResponse.json();
+                const registration = await navigator.serviceWorker.ready;
+                let subscription = await registration.pushManager.getSubscription();
+                if (!subscription) {
+                    subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: pushKeyToBytes(publicKey)
+                    });
+                }
+                await fetch('/api/push-subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+                    body: JSON.stringify({
+                        subscription: {
+                            endpoint: subscription.endpoint,
+                            keys: subscription.toJSON().keys,
+                            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+                        }
+                    })
+                });
+            } catch (err) {
+                console.warn('Push notification belum terdaftar:', err);
+            }
+        }
+
         async function checkShiftReminder() {
             if (shiftReminderBusy || !currentUser || !['karyawan', 'staff', 'magang'].includes(currentUser.role)) return;
             shiftReminderBusy = true;
             try {
                 if (Date.now() - lastShiftReminderConfigRefresh > 300000) {
+                    const refreshedUser = await sbGetCurrentUser();
+                    if (refreshedUser && refreshedUser.id === currentUser.id) {
+                        currentUser = mergeLocalProfileFields(refreshedUser);
+                    }
                     await loadShiftConfigsFromServer();
                     lastShiftReminderConfigRefresh = Date.now();
                 }
                 const shiftCfg = getShiftConfig(currentUser);
                 if (!shiftCfg) return;
                 const now = new Date();
+                const date = now.toISOString().split('T')[0];
                 const minutesNow = now.getHours() * 60 + now.getMinutes();
                 const masukAt = shiftCfg.jamMasuk * 60 + shiftCfg.menitMasuk;
                 const pulangAt = shiftCfg.jamPulang * 60 + shiftCfg.menitPulang;
@@ -118,6 +190,8 @@ function toggleSidebar(show) {
 
         function startShiftReminder() {
             if (shiftReminderTimer) clearInterval(shiftReminderTimer);
+            requestShiftReminderPermission();
+            setTimeout(registerShiftPushSubscription, 500);
             checkShiftReminder();
             shiftReminderTimer = setInterval(checkShiftReminder, 30000);
         }
@@ -535,6 +609,7 @@ function toggleSidebar(show) {
                 if (btnPanel) btnPanel.classList.remove('hidden');
                 if (btnUsers) btnUsers.classList.remove('hidden');
                 if (btnVerif) btnVerif.classList.remove('hidden');
+                if (btnShiftMaster) btnShiftMaster.classList.remove('hidden');
                 if (btnKalender) btnKalender.classList.remove('hidden');
                 if (btnPwReq) btnPwReq.classList.remove('hidden');
                 if (masterLabel) masterLabel.classList.remove('hidden');
